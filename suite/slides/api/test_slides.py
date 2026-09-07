@@ -1,6 +1,6 @@
 import frappe
-from frappe.utils import cstr
 from frappe.tests import IntegrationTestCase
+from frappe.utils import cstr
 
 from suite.slides.api.slides import save_slides
 from suite.slides.tests.utils import make_presentation
@@ -75,6 +75,15 @@ class TestSaveSlides(IntegrationTestCase):
             self.save([slide("a")], base_modified=stale)
 
         self.assertEqual(row_names(self.presentation), before)
+
+    def test_thumbnail_is_not_client_writable(self):
+        self.save([slide("a")])
+        (name,) = row_names(self.presentation)
+        frappe.db.set_value("Slide", name, "thumbnail", "server-owned")
+
+        self.save([{**slide("a"), "thumbnail": "forged"}])
+
+        self.assertEqual(frappe.db.get_value("Slide", name, "thumbnail"), "server-owned")
 
     def test_returns_the_new_version(self):
         result = self.save([slide("a")])
