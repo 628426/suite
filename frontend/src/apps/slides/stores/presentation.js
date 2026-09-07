@@ -1,5 +1,5 @@
 import { ref, computed } from 'vue'
-import { createResource, call, createDocumentResource, frappeRequest, toast, dialog } from 'frappe-ui'
+import { createResource, call, frappeRequest, toast, dialog } from 'frappe-ui'
 
 import tinycolor from 'tinycolor2'
 
@@ -49,6 +49,11 @@ const updatePresentationTitle = async (id, newTitle) => {
 	})
 	if (!response) throw new Error('Failed to rename presentation')
 	await adoptServerVersion(id, response)
+	// nothing refetches the doc after a rename, so the header would keep the old name
+	if (presentationDoc.value?.name === id) {
+		presentationDoc.value.title = newTitle
+		presentationDoc.value.slug = response.slug
+	}
 	return response.slug
 }
 
@@ -221,50 +226,49 @@ const normalizeSlideDoc = (doc) => {
 
 const slidesLength = ref(0)
 
-const getPresentationResource = (name) => {
-	let clientIdsRepaired = false
-	return createDocumentResource({
-		doctype: 'Presentation',
-		name: name,
-		auto: false,
-		transform(doc) {
-			clientIdsRepaired = normalizeSlideDoc(doc)
-		},
-		async onSuccess(doc) {
-			slidesLength.value = doc.slides?.length || 0
-			for (const slide of doc.slides || []) {
-				slide.elements = await transformElements(slide.elements)
-			}
-
-			// the worker may replay a document older than the last save; the copy that
-			// save left behind is then the truth, and unsynced edits ride along in it
-			const local = await getPresentationFromLocalDB(name)
-			const servedIsStale = local?.baseModified > doc.modified
-			if (servedIsStale || (local?.dirty && local.baseModified === doc.modified)) {
-				if (servedIsStale) doc.modified = local.baseModified
-				const restored = JSON.parse(JSON.stringify(local.content))
-				// local content skips the load pipeline; migrate + dedup it here too
-				for (const slide of restored) {
-					slide.background = normalizeColor(slide.background)
-					slide.elements = parseElements(slide.elements, slide)
-				}
-				const repaired = ensureUniqueClientIds(restored)
-				slides.value = restored
-				slidesLength.value = slides.value.length
-				// a clean copy is what the last successful save sent, so it is the
-				// server content at baseModified and there is nothing to push
-				if (local.dirty || repaired) markDirty()
-				else markClean()
-				return
-			}
-			if (local?.dirty) toast.warning('Changes that never reached the server were discarded.')
-
-			slides.value = JSON.parse(JSON.stringify(doc.slides || []))
-			markClean()
-			// persist the repair
-			if (clientIdsRepaired) markDirty()
-		},
+// the service worker intercepts GETs only, and an offline copy warms exactly this
+// url with this param order (utils/pinTargets.ts), so both have to stay in step
+const loadPresentationDoc = async (name) => {
+	const doc = await frappeRequest({
+		url: 'frappe.client.get',
+		method: 'GET',
+		params: { doctype: 'Presentation', name },
 	})
+
+	const clientIdsRepaired = normalizeSlideDoc(doc)
+	slidesLength.value = doc.slides?.length || 0
+	for (const slide of doc.slides || []) {
+		slide.elements = await transformElements(slide.elements)
+	}
+
+	// the worker may replay a document older than the last save; the copy that
+	// save left behind is then the truth, and unsynced edits ride along in it
+	const local = await getPresentationFromLocalDB(name)
+	const servedIsStale = local?.baseModified > doc.modified
+	if (servedIsStale || (local?.dirty && local.baseModified === doc.modified)) {
+		if (servedIsStale) doc.modified = local.baseModified
+		const restored = JSON.parse(JSON.stringify(local.content))
+		// local content skips the load pipeline; migrate + dedup it here too
+		for (const slide of restored) {
+			slide.background = normalizeColor(slide.background)
+			slide.elements = parseElements(slide.elements, slide)
+		}
+		const repaired = ensureUniqueClientIds(restored)
+		slides.value = restored
+		slidesLength.value = slides.value.length
+		// a clean copy is what the last successful save sent, so it is the
+		// server content at baseModified and there is nothing to push
+		if (local.dirty || repaired) markDirty()
+		else markClean()
+		return doc
+	}
+	if (local?.dirty) toast.warning('Changes that never reached the server were discarded.')
+
+	slides.value = JSON.parse(JSON.stringify(doc.slides || []))
+	markClean()
+	// persist the repair
+	if (clientIdsRepaired) markDirty()
+	return doc
 }
 
 const getReadonlyPresentationResource = (name, url) => {
@@ -320,38 +324,33 @@ const savePresentationDoc = async (updatedSlides) => {
 const reloadAfterConflict = async (id) => {
 	if (presentationId.value !== id) return
 	toast.warning('This presentation was changed elsewhere. Showing the latest version.')
-	const resource = presentationResource.value
-	await resource.get.fetch()
-	// the fetch replaces resource.doc, and the next save reads its version from here
-	if (presentationResource.value !== resource) return
-	presentationDoc.value = resource.doc
+	const doc = await loadPresentationDoc(id)
+	// the editor can move on mid-fetch; the next save reads its version from here
+	if (presentationId.value !== id) return
+	presentationDoc.value = doc
 	// undo still holds the discarded content and would save it right back
 	commandHistory.clearHistory()
 }
-
-const presentationResource = ref(null)
 
 const initPresentationDoc = async (id, readonly = false) => {
 	presentationId.value = id
 	let doc
 	if (readonly) {
-		presentationResource.value = getReadonlyPresentationResource(
+		let resource = getReadonlyPresentationResource(
 			id,
 			'suite.slides.doctype.presentation.presentation.get_public_presentation',
 		)
-		await presentationResource.value.fetch()
-		if (presentationResource.value.data.is_composite) {
-			presentationResource.value = getReadonlyPresentationResource(
+		await resource.fetch()
+		if (resource.data.is_composite) {
+			resource = getReadonlyPresentationResource(
 				id,
 				'suite.slides.doctype.presentation.presentation.get_composite_presentation',
 			)
-			await presentationResource.value.fetch()
+			await resource.fetch()
 		}
-		doc = presentationResource.value.data
+		doc = resource.data
 	} else {
-		presentationResource.value = getPresentationResource(id)
-		await presentationResource.value.get.fetch()
-		doc = presentationResource.value.doc
+		doc = await loadPresentationDoc(id)
 	}
 	frappeRequest({
 		url: 'suite.drive.api.files.track_visit',
