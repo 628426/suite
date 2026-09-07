@@ -315,7 +315,10 @@ const reloadAfterConflict = async (id) => {
 	const resource = presentationResource.value
 	await resource.get.fetch()
 	// the fetch replaces resource.doc, and the next save reads its version from here
-	if (presentationResource.value === resource) presentationDoc.value = resource.doc
+	if (presentationResource.value !== resource) return
+	presentationDoc.value = resource.doc
+	// undo still holds the discarded content and would save it right back
+	commandHistory.clearHistory()
 }
 
 const presentationResource = ref(null)
