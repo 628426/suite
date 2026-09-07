@@ -42,16 +42,23 @@ const createPresentationResource = createResource({
 })
 
 const updatePresentationTitle = async (id, newTitle) => {
-	return call('suite.slides.doctype.presentation.presentation.update_title', {
+	const response = await call('suite.slides.doctype.presentation.presentation.update_title', {
 		name: id,
 		title: newTitle,
-	}).then((response) => {
-		if (!response) throw new Error('Failed to rename presentation')
-		// autosave stamps this onto the local copy, so a stale value would make the
-		// next load discard edits that had not synced yet
-		if (presentationDoc.value?.name === id) presentationDoc.value.modified = response.modified
-		return response.slug
 	})
+	if (!response) throw new Error('Failed to rename presentation')
+	await adoptServerVersion(id, response)
+	return response.slug
+}
+
+// adopting a stamp over a stale base would let the next save wipe rows saved elsewhere
+const adoptServerVersion = async (id, { modified, base_modified }) => {
+	if (presentationDoc.value?.name !== id) return
+	if (presentationDoc.value.modified === base_modified) {
+		presentationDoc.value.modified = modified
+	} else {
+		await reloadAfterConflict(id)
+	}
 }
 
 const getElementDimensions = async (el) => {
@@ -427,6 +434,7 @@ export {
 	presentationTheme,
 	inReadonlyMode,
 	updatePresentationTitle,
+	adoptServerVersion,
 	savePresentationDoc,
 	isSaveConflict,
 	reloadAfterConflict,

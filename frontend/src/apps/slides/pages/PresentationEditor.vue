@@ -87,6 +87,7 @@ import {
 	duplicatePresentation,
 	confirmDeletePresentation,
 	presentationTheme,
+	adoptServerVersion,
 	resetEditorState,
 	pageTitle,
 } from '@/apps/slides/stores/presentation'
@@ -356,21 +357,16 @@ const updatePresentationTheme = async (theme) => {
 	showThemeDialog.value = false
 
 	try {
-		const doc = await call('frappe.client.set_value', {
-			doctype: 'Presentation',
+		const doc = await call('suite.slides.doctype.presentation.presentation.update_theme', {
 			name: id,
-			fieldname: 'theme',
-			value: theme,
+			theme: theme,
 		})
 
-		// the editor can move on mid-request; writing then would apply the theme
-		// and the modified stamp to a different presentation
+		// the editor can move to another presentation mid-request
 		if (presentationDoc.value?.name !== id) return
 
 		presentationDoc.value.theme = theme
-		// autosave stamps this onto the local copy, so a stale value would make the
-		// next load discard edits that had not synced yet
-		presentationDoc.value.modified = doc.modified
+		await adoptServerVersion(id, doc)
 	} catch (error) {
 		console.error('Failed to update theme: ', error)
 		toast.error('Could not update the theme. Please try again.')
