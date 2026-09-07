@@ -4,7 +4,8 @@ from frappe.model import default_fields, no_value_fields
 from frappe.utils import cstr
 
 
-@frappe.whitelist()
+# a save over GET would report success and then be rolled back after responding
+@frappe.whitelist(methods=["POST"])
 def save_slides(name: str, slides: list[dict], base_modified: str) -> dict:
     """Replace a presentation's slides with the editor's list.
 
