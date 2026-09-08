@@ -2,8 +2,6 @@ import { ref } from 'vue'
 import {
 	presentationId,
 	savePresentationDoc,
-	isSaveConflict,
-	reloadAfterConflict,
 	presentationDoc,
 	inReadonlyMode,
 } from '@/apps/slides/stores/presentation'
@@ -119,6 +117,10 @@ const markClean = () => {
 // true when an online save to the server failed; drives the "Not saved" indicator
 const saveFailed = ref(false)
 
+// the base version the server refused: pushing it again fails the same way however long
+// we wait, so it is held until a reload or another presentation gives this tab a newer one
+let refusedBase = null
+
 const syncSnapshotToServer = async (snapshot, id, generation) => {
 	// the resource points at whatever the editor moved on to, so this content
 	// would land on the wrong document; the snapshot stays dirty and gets retried
@@ -126,7 +128,7 @@ const syncSnapshotToServer = async (snapshot, id, generation) => {
 
 	// the version this save produced, read from its own response: presentationDoc
 	// may already point at another presentation by the time it resolves
-	const savedModified = await savePresentationDoc(snapshot.content)
+	const savedModified = await savePresentationDoc(snapshot.content, snapshot.baseModified)
 
 	if (presentationId.value !== id) {
 		// an edit made mid-save lives in slides.value, which belongs to another
@@ -154,25 +156,6 @@ const syncSnapshotToServer = async (snapshot, id, generation) => {
 	})
 }
 
-const syncPresentationToServer = async (id, generation) => {
-	const snapshot = await getPresentationFromLocalDB(id)
-	if (!snapshot || !snapshot.dirty) return
-
-	try {
-		// throws on failure so the caller keeps the state dirty and retries
-		await syncSnapshotToServer(snapshot, id, generation)
-	} catch (error) {
-		if (!isSaveConflict(error)) throw error
-		await discardSnapshot(snapshot, id)
-	}
-}
-
-// a refused snapshot can never be retried: the server's version replaces it
-const discardSnapshot = async (snapshot, id) => {
-	await savePresentationToLocalDB({ ...snapshot, dirty: false, updatedAt: Date.now() })
-	await reloadAfterConflict(id)
-}
-
 const getLatestSlideContent = () => {
 	const latestContent = slides.value
 	return cloneObj(latestContent)
@@ -185,26 +168,32 @@ const saveCurrentState = async () => {
 
 	isSaving.value = true
 
+	// the base is read in the catch too, to record which version the server refused
+	let baseAtSnapshot
+
 	try {
 		const idAtSnapshot = presentationId.value
 		const generationAtSnapshot = generationFor(idAtSnapshot)
-		const content = getLatestSlideContent()
+		baseAtSnapshot = presentationDoc.value?.modified
 
-		// save to indexedDB as dirty (not yet synced); baseModified = server version these build on
-		await savePresentationToLocalDB({
+		// the snapshot is pushed as held, never read back: another tab editing the same
+		// presentation shares this record and would hand us its content to send as ours
+		const snapshot = {
 			id: idAtSnapshot,
-			content: content,
+			content: getLatestSlideContent(),
 			updatedAt: Date.now(),
 			dirty: true,
-			baseModified: presentationDoc.value?.modified,
-		})
+			baseModified: baseAtSnapshot,
+		}
+		await savePresentationToLocalDB(snapshot)
 
 		// if offline, stay dirty so we retry once back online
 		if (!navigator.onLine) return
+		if (baseAtSnapshot === refusedBase) return
 
 		// only mark clean once the server actually has the changes,
 		// and only if no edit arrived while this save was in flight
-		await syncPresentationToServer(idAtSnapshot, generationAtSnapshot)
+		await syncSnapshotToServer(snapshot, idAtSnapshot, generationAtSnapshot)
 		saveFailed.value = false
 
 		// dirty belongs to another presentation now, so it isn't ours to clear
@@ -214,6 +203,7 @@ const saveCurrentState = async () => {
 		// keep dirty so autosave retries and beforeunload warns; log once per outage
 		if (!saveFailed.value) console.error('Save failed: ', err)
 		saveFailed.value = true
+		if (err?.exc_type === 'TimestampMismatchError') refusedBase = baseAtSnapshot
 	} finally {
 		isSaving.value = false
 	}

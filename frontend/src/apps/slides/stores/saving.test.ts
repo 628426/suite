@@ -6,16 +6,13 @@ const presentationDoc = ref<any>({ modified: 'M1' })
 const inReadonlyMode = ref(false)
 const slides = ref<any[]>([{ clientId: 'c1', background: '#ff0000ff', elements: [] }])
 
-let serverSave: (content: any) => Promise<string | undefined>
-const reloadAfterConflict = vi.fn(async () => {})
+let serverSave: (content: any, baseModified?: string) => Promise<string | undefined>
 
 vi.mock('@/apps/slides/stores/presentation', () => ({
 	presentationId,
 	presentationDoc,
 	inReadonlyMode,
-	savePresentationDoc: (content: any) => serverSave(content),
-	isSaveConflict: (error: any) => error?.exc_type === 'TimestampMismatchError',
-	reloadAfterConflict,
+	savePresentationDoc: (content: any, baseModified?: string) => serverSave(content, baseModified),
 }))
 
 vi.mock('@/apps/slides/stores/slide', () => ({ slides }))
@@ -27,11 +24,18 @@ vi.mock('@/apps/slides/utils/helpers', () => ({
 const { saveCurrentState, markDirty, dirty, saveFailed, getPresentationFromLocalDB } =
 	await import('./saving')
 
+const conflict = () => Object.assign(new Error('stale'), { exc_type: 'TimestampMismatchError' })
+
 describe('saveCurrentState', () => {
+	// a refused base is held for good, so each test opens on a version of its own
+	let base = ''
+	let opens = 0
+
 	beforeEach(() => {
-		reloadAfterConflict.mockClear()
+		base = `M${++opens}`
+		saveFailed.value = false
 		presentationId.value = 'p1'
-		presentationDoc.value = { modified: 'M1' }
+		presentationDoc.value = { modified: base }
 		slides.value = [{ clientId: 'c1', background: '#ff0000ff', elements: [] }]
 		serverSave = async () => {
 			presentationDoc.value = { modified: 'M2' }
@@ -82,22 +86,6 @@ describe('saveCurrentState', () => {
 		expect(local.baseModified).toBe('M2')
 	})
 
-	it('still marks the local copy clean when the editor moved on without editing', async () => {
-		markDirty()
-
-		serverSave = async () => {
-			presentationId.value = 'p2'
-			presentationDoc.value = { modified: 'M2' }
-			return 'M2'
-		}
-
-		await saveCurrentState()
-
-		const local: any = await getPresentationFromLocalDB('p1')
-		expect(local.dirty).toBe(false)
-		expect(local.baseModified).toBe('M2')
-	})
-
 	it('marks the local copy clean when nothing changed during the save', async () => {
 		markDirty()
 
@@ -109,20 +97,72 @@ describe('saveCurrentState', () => {
 		expect(local.baseModified).toBe('M2')
 	})
 
-	it('drops a snapshot the server refused as stale and reloads', async () => {
+	it('pushes the content and version it snapshotted, not what it can read back later', async () => {
+		markDirty()
+
+		let sent: any
+		serverSave = async (content, baseModified) => {
+			sent = { content, baseModified }
+			// a rename lands between the draft write and the push
+			presentationDoc.value = { modified: 'M9' }
+			return 'M2'
+		}
+
+		await saveCurrentState()
+
+		expect(sent.content[0].background).toBe('#ff0000ff')
+		expect(sent.baseModified).toBe(base)
+	})
+
+	it('keeps a snapshot the server refused as stale', async () => {
 		markDirty()
 
 		serverSave = async () => {
-			throw Object.assign(new Error('stale'), { exc_type: 'TimestampMismatchError' })
+			throw conflict()
 		}
 
 		await saveCurrentState()
 
 		const local: any = await getPresentationFromLocalDB('p1')
-		// retrying would only be refused again, so nothing stays pending
-		expect(local.dirty).toBe(false)
-		expect(dirty.value).toBe(false)
-		expect(saveFailed.value).toBe(false)
-		expect(reloadAfterConflict).toHaveBeenCalledWith('p1')
+		// the edits are still the only copy of the user's work; discarding them loses it
+		expect(local.dirty).toBe(true)
+		expect(local.content[0].background).toBe('#ff0000ff')
+		expect(dirty.value).toBe(true)
+		expect(saveFailed.value).toBe(true)
+	})
+
+	it('stops pushing once the server refuses this tab as stale', async () => {
+		markDirty()
+
+		let pushes = 0
+		serverSave = async () => {
+			pushes++
+			throw conflict()
+		}
+
+		await saveCurrentState()
+		// the base this tab holds never catches up on its own, so retrying it is wasted
+		await saveCurrentState()
+		expect(pushes).toBe(1)
+
+		// the edits still go to the draft, they just aren't offered to the server again
+		slides.value[0].background = '#00ff00ff'
+		markDirty()
+		await saveCurrentState()
+		const local: any = await getPresentationFromLocalDB('p1')
+		expect(local.content[0].background).toBe('#00ff00ff')
+		expect(local.dirty).toBe(true)
+		expect(pushes).toBe(1)
+
+		// a reload, or opening another presentation, gives this tab a base the server
+		// hasn't moved past, and the hold is on the refused version only
+		presentationDoc.value = { modified: 'M-reloaded' }
+		serverSave = async () => {
+			pushes++
+			return 'M-next'
+		}
+		markDirty()
+		await saveCurrentState()
+		expect(pushes).toBe(2)
 	})
 })

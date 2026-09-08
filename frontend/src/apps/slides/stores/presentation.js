@@ -300,16 +300,14 @@ const toSlideRow = (slide) => ({
 	fade_unmatched_elements: slide.fadeUnmatchedElements,
 })
 
-const isSaveConflict = (error) => error?.exc_type === 'TimestampMismatchError'
-
-const savePresentationDoc = async (updatedSlides) => {
+const savePresentationDoc = async (updatedSlides, baseModified) => {
 	const doc = presentationDoc.value
-	// the server refuses a snapshot built on an older version than it holds, which
-	// is what keeps a stale tab from wiping rows another editor saved since
+	// the base is the version this content was built on, carried by the snapshot: reading
+	// it live would let content written against an older doc pass the server's check
 	const { modified } = await call('suite.slides.api.slides.save_slides', {
 		name: doc.name,
 		slides: updatedSlides.map(toSlideRow),
-		base_modified: doc.modified,
+		base_modified: baseModified,
 	})
 
 	// the editor can move on mid-save; stamping then would mark another
@@ -435,7 +433,6 @@ export {
 	updatePresentationTitle,
 	adoptServerVersion,
 	savePresentationDoc,
-	isSaveConflict,
 	reloadAfterConflict,
 	initPresentationDoc,
 	deletePresentation,
