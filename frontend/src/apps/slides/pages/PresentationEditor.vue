@@ -80,6 +80,7 @@ import ThumbnailCapture from '@/apps/slides/components/ThumbnailCapture.vue'
 import {
 	presentationId,
 	initPresentationDoc,
+	startLoad,
 	presentationDoc,
 	templateList,
 	templateListResource,
@@ -120,7 +121,6 @@ import {
 import { inSlideShowMode, startSlideShow } from '@/apps/slides/stores/slideshow'
 import { Layout } from 'lucide-vue-next'
 import { useCommandHistory } from '@/apps/slides/composables/useCommandHistory'
-
 
 const route = useRoute()
 const router = useRouter()
@@ -183,10 +183,6 @@ const initAutoSave = () => {
 	autosaveInterval = setInterval(handleAutoSave, 500)
 }
 
-const loadPresentation = async (id) => {
-	presentationDoc.value = await initPresentationDoc(id, inReadonlyMode.value)
-}
-
 const handleBeforeUnload = (e) => {
 	if (dirty.value) {
 		e.preventDefault()
@@ -222,11 +218,15 @@ const loadEditorState = async () => {
 
 	performBeforeLoadOperations()
 	if (presentationDoc.value && presentationId.value === id && slides.value.length) {
+		// an earlier load may still be in flight
+		startLoad()
 		performAfterLoadOperations()
 		return
 	}
 
-	await loadPresentation(id)
+	const doc = await initPresentationDoc(id, inReadonlyMode.value)
+	// a later load took the editor over
+	if (!doc) return
 	performAfterLoadOperations()
 }
 

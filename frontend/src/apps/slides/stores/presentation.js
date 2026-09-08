@@ -226,9 +226,15 @@ const normalizeSlideDoc = (doc) => {
 
 const slidesLength = ref(0)
 
-// the service worker intercepts GETs only, and an offline copy warms exactly this
-// url with this param order (utils/pinTargets.ts), so both have to stay in step
-const loadPresentationDoc = async (name) => {
+// only the latest load may commit; an older one lands on the presentation now open
+let latestLoad = 0
+
+const startLoad = () => ++latestLoad
+
+// touches no editor state, so a save during the load still targets what is on screen
+const fetchPresentation = async (name) => {
+	// the service worker intercepts GETs only, and an offline copy warms exactly this
+	// url with this param order (utils/pinTargets.ts), so both have to stay in step
 	const doc = await frappeRequest({
 		url: 'frappe.client.get',
 		method: 'GET',
@@ -236,7 +242,6 @@ const loadPresentationDoc = async (name) => {
 	})
 
 	const clientIdsRepaired = normalizeSlideDoc(doc)
-	slidesLength.value = doc.slides?.length || 0
 	for (const slide of doc.slides || []) {
 		slide.elements = await transformElements(slide.elements)
 	}
@@ -254,25 +259,31 @@ const loadPresentationDoc = async (name) => {
 			slide.elements = parseElements(slide.elements, slide)
 		}
 		const repaired = ensureUniqueClientIds(restored)
-		slides.value = restored
-		slidesLength.value = slides.value.length
 		// a clean copy is what the last successful save sent, so it is the
 		// server content at baseModified and there is nothing to push
-		if (local.dirty || repaired) markDirty()
-		else markClean()
-		return doc
+		return { doc, content: restored, dirty: local.dirty || repaired }
 	}
 	if (local?.dirty) toast.warning('Changes that never reached the server were discarded.')
 
-	slides.value = JSON.parse(JSON.stringify(doc.slides || []))
-	markClean()
 	// persist the repair
-	if (clientIdsRepaired) markDirty()
-	return doc
+	return {
+		doc,
+		content: JSON.parse(JSON.stringify(doc.slides || [])),
+		dirty: clientIdsRepaired,
+	}
 }
 
-const getReadonlyPresentationResource = (name, url) => {
-	return createResource({
+const showPresentation = (id, { doc, content, dirty }) => {
+	presentationId.value = id
+	presentationDoc.value = doc
+	slides.value = content
+	slidesLength.value = content.length
+	if (dirty) markDirty()
+	else markClean()
+}
+
+const fetchReadonly = async (name, url) => {
+	const resource = createResource({
 		url,
 		method: 'GET',
 		auto: false,
@@ -282,12 +293,9 @@ const getReadonlyPresentationResource = (name, url) => {
 		transform(doc) {
 			normalizeSlideDoc(doc)
 		},
-		onSuccess(doc) {
-			slidesLength.value = doc.slides?.length || 0
-			slides.value = JSON.parse(JSON.stringify(doc.slides || []))
-			markClean()
-		},
 	})
+	await resource.fetch()
+	return resource.data
 }
 
 // rows are matched by client_id on the server, so name, parent and idx stay out
@@ -322,39 +330,44 @@ const savePresentationDoc = async (updatedSlides, baseModified) => {
 const reloadAfterConflict = async (id) => {
 	if (presentationId.value !== id) return
 	toast.warning('This presentation was changed elsewhere. Showing the latest version.')
-	const doc = await loadPresentationDoc(id)
-	// the editor can move on mid-fetch; the next save reads its version from here
-	if (presentationId.value !== id) return
-	presentationDoc.value = doc
+	const load = startLoad()
+	const loaded = await fetchPresentation(id)
+	// the editor can move on mid-fetch
+	if (load !== latestLoad) return
+	showPresentation(id, loaded)
 	// undo still holds the discarded content and would save it right back
 	commandHistory.clearHistory()
 }
 
+// returns the committed doc, or null if a later load took over
 const initPresentationDoc = async (id, readonly = false) => {
-	presentationId.value = id
-	let doc
+	const load = startLoad()
+	let loaded
+
 	if (readonly) {
-		let resource = getReadonlyPresentationResource(
+		let doc = await fetchReadonly(
 			id,
 			'suite.slides.doctype.presentation.presentation.get_public_presentation',
 		)
-		await resource.fetch()
-		if (resource.data.is_composite) {
-			resource = getReadonlyPresentationResource(
+		if (doc.is_composite) {
+			doc = await fetchReadonly(
 				id,
 				'suite.slides.doctype.presentation.presentation.get_composite_presentation',
 			)
-			await resource.fetch()
 		}
-		doc = resource.data
+		loaded = { doc, content: JSON.parse(JSON.stringify(doc.slides || [])), dirty: false }
 	} else {
-		doc = await loadPresentationDoc(id)
+		loaded = await fetchPresentation(id)
 	}
+
+	if (load !== latestLoad) return null
+
+	showPresentation(id, loaded)
 	frappeRequest({
 		url: 'suite.drive.api.files.track_visit',
 		params: { doctype: 'Presentation', docname: id },
 	}).catch(() => {})
-	return doc
+	return loaded.doc
 }
 
 const templateList = ref([])
@@ -412,6 +425,8 @@ const pageTitle = () => {
 }
 
 const resetEditorState = () => {
+	// a load in flight would commit over the blank editor
+	startLoad()
 	presentationDoc.value = null
 	slides.value = []
 	slidesLength.value = 0
@@ -435,6 +450,7 @@ export {
 	savePresentationDoc,
 	reloadAfterConflict,
 	initPresentationDoc,
+	startLoad,
 	deletePresentation,
 	confirmDeletePresentation,
 	duplicatePresentation,
