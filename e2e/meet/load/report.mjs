@@ -85,3 +85,32 @@ export function evaluateRotation(windows, resourceSamples) {
 		errors.push("producer or consumer resources changed during rotation");
 	return errors;
 }
+
+export function evaluateCameras(observations, resourceSamples, expected) {
+	const errors = [];
+	for (const participant of observations) {
+		if (participant.publisher) {
+			if (participant.producerIdsBefore.join() !== participant.producerIdsAfter.join() || participant.producerIdsAfter.length !== 1)
+				errors.push(`${participant.userId}: camera Producer was not stable`);
+			if (!participant.producerReady) errors.push(`${participant.userId}: camera Producer was not enabled and unpaused`);
+			if (participant.outboundBytesDelta <= 0) errors.push(`${participant.userId}: camera outbound RTP did not advance`);
+			if (participant.framesEncodedDelta !== null && participant.framesEncodedDelta <= 0)
+				errors.push(`${participant.userId}: camera framesEncoded did not advance`);
+		} else if (participant.producerIdsAfter.length) errors.push(`${participant.userId}: idle participant published media`);
+		if (participant.receiverCount !== participant.expectedReceivers)
+			errors.push(`${participant.userId}: received ${participant.receiverCount}/${participant.expectedReceivers} camera tracks`);
+		if (participant.inboundAdvanced !== participant.expectedReceivers)
+			errors.push(`${participant.userId}: inbound RTP advanced for ${participant.inboundAdvanced}/${participant.expectedReceivers} cameras`);
+		if (participant.decodedAdvanced !== participant.decodedObserved)
+			errors.push(`${participant.userId}: decoded frames advanced for ${participant.decodedAdvanced}/${participant.decodedObserved} cameras`);
+	}
+	if (resourceSamples.some((sample) => sample.producers !== expected.producers || sample.consumers !== expected.consumers))
+		errors.push("camera Producer or Consumer resources were not stable at expected counts");
+	return errors;
+}
+
+export function cameraDeliveryReady(statuses, cameras, count) {
+	return statuses.length === count && statuses.every((status, index) =>
+		status.producerCount === (index < cameras ? 1 : 0) &&
+		status.consumerCount === cameras - (index < cameras ? 1 : 0));
+}
