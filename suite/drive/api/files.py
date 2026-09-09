@@ -7,10 +7,13 @@ import tempfile
 import zipfile
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 from urllib.parse import quote
 
 import frappe
 import mimemapper
+import markdown
+from markdown.extensions.wikilinks import WikiLinkExtension
 from frappe.rate_limiter import rate_limit
 from pypika import Order
 from werkzeug.utils import secure_filename, send_file
@@ -45,6 +48,63 @@ from suite.drive.utils.users import mark_as_viewed
 from .permissions import user_has_permission
 
 FORBIDDEN_DOWNLOAD_TYPES = ["Folder", "Link", "Document", "Presentation"]
+TEXT_PREVIEW_LIMIT_BYTES = 10_000_000
+
+
+def _get_file_entity(entity_name: str):
+    """Fetch a preview-only file snapshot and enforce the same read gate as
+    `get_file_content`."""
+    if not user_has_permission(entity_name, "read"):
+        frappe.throw("You do not have permission to view this file", frappe.PermissionError)
+
+    entity = frappe.get_value(
+        "File",
+        {"name": entity_name},
+        [
+            "name",
+            "file_name",
+            "file_type",
+            "status",
+            "file_url",
+            "is_private",
+            "mime_type",
+            "file_size",
+        ],
+        as_dict=1,
+    )
+    if not entity or entity.file_type in FORBIDDEN_DOWNLOAD_TYPES or entity.status != STATUS_ACTIVE:
+        frappe.throw("Not found", frappe.DoesNotExistError)
+
+    return entity
+
+
+def _decode_markdown_bytes(raw: bytes) -> str:
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("latin-1", errors="replace")
+
+
+def _safe_markdown_url_builder(label, base, end):
+    return f"/api/method/suite.writer.api.docs.get_wiki_link?title={label}"
+
+
+def _clean_markdown_content(content):
+    property_end = content[3:].find("---")
+    if content.startswith("---") and property_end != -1:
+        content = content[:property_end].replace("\n  ", " " * 4) + content[property_end:]
+    content = content[:property_end] + content[property_end:].replace("\n", "\n\n")
+    content = content[:property_end] + content[property_end:].replace("\n\n\n", "\n<p></p>")
+    return content
+
+
+def _render_markdown(raw_text: str) -> str:
+    cleaned = _clean_markdown_content(raw_text)
+    md = markdown.Markdown(
+        extensions=["extra", "meta", WikiLinkExtension(build_url=_safe_markdown_url_builder)],
+    )
+    md.set_output_format("html")
+    return md.convert(cleaned)
 
 
 @frappe.whitelist(allow_guest=True)
@@ -318,6 +378,55 @@ def get_file_content(entity_name: str, trigger_download: bool = False, token: st
         return
 
     return get_file_internal(file, trigger_download)
+
+
+def _read_preview_bytes(file, max_bytes: int) -> tuple[bytes, int]:
+    manager = FileManager()
+    read_size = min(max_bytes, TEXT_PREVIEW_LIMIT_BYTES)
+    if manager.s3_enabled and not stored_on_disk(file.file_url):
+        data = manager.get_file(file, f"bytes=0-{read_size - 1}").read()
+    else:
+        with manager.open_file(storage_key(file.file_url)) as stream:
+            data = stream.read(read_size)
+
+    payload_size = file.file_size or len(data)
+    return data, payload_size
+
+
+@frappe.whitelist(allow_guest=True)
+def get_markdown_preview(
+    entity_name: str,
+    mode: str = "html",
+    include_source: int = 0,
+    max_bytes: int | None = None,
+):
+    file = _get_file_entity(entity_name)
+
+    if file.mime_type != "text/markdown":
+        frappe.throw("Only markdown files can be previewed this way.", frappe.ValidationError)
+
+    if mode not in {"html", "raw"}:
+        frappe.throw("Invalid markdown preview mode.", frappe.ValidationError)
+
+    limit = max_bytes or TEXT_PREVIEW_LIMIT_BYTES
+    if not isinstance(limit, int) or limit <= 0:
+        limit = TEXT_PREVIEW_LIMIT_BYTES
+
+    raw, payload_size = _read_preview_bytes(file, limit)
+    decoded = _decode_markdown_bytes(raw)
+    truncated = len(raw) >= limit and payload_size > limit
+
+    content = _render_markdown(decoded) if mode == "html" else decoded
+    response: dict[str, Any] = {
+        "content": content,
+        "mime_type": file.mime_type,
+        "size": payload_size,
+        "truncated": bool(truncated),
+    }
+
+    if bool(include_source):
+        response["source"] = decoded
+    return response
 
 
 def _serve_resumable(manager, key, download_name, mime_type=None):

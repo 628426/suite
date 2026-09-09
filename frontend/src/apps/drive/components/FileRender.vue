@@ -22,6 +22,7 @@ const PDFPreview = defineAsyncComponent(() => import('./FileTypePreview/PDFPrevi
 const VideoPreview = defineAsyncComponent(() => import('./FileTypePreview/VideoPreview.vue'))
 const TextPreview = defineAsyncComponent(() => import('./FileTypePreview/TextPreview.vue'))
 const AudioPreview = defineAsyncComponent(() => import('@/apps/drive/components/FileTypePreview/AudioPreview.vue'))
+const MarkdownPreview = defineAsyncComponent(() => import('./FileTypePreview/MarkdownPreview.vue'))
 import LucideAlertCircle from '~icons/lucide/alert-circle'
 import { diskSettings } from '@/apps/drive/resources/permissions'
 
@@ -61,10 +62,12 @@ const RENDERS = {
   Presentation: MSOfficePreview,
   Text: TextPreview,
   Code: TextPreview,
+  Markdown: MarkdownPreview,
 }
 
 const EXCEPTIONS = {
   'text/csv': 'Text',
+  'text/markdown': 'Markdown',
 }
 
 const getType = (k) => {

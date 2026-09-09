@@ -14,11 +14,13 @@ from suite.drive.api.files import (
     create_auth_token,
     does_entity_exist,
     get_file_content,
+    get_markdown_preview,
     get_new_title,
     move,
     remove_or_restore,
     rename,
     search,
+    TEXT_PREVIEW_LIMIT_BYTES,
     stream_file_content,
     track_visit,
     update_access,
@@ -365,6 +367,43 @@ class TestDriveFilesAPI(IntegrationTestCase):
             self.assertFalse(user_has_permission(self.file, "read"))
             with self.assertRaises(frappe.PermissionError):
                 get_file_content(self.file.name)
+
+    def test_markdown_preview_returns_formatted_html_for_markdown(self):
+        with self.set_user(OWNER):
+            markdown = self.upload(b"# Title\\n\\n- item", filename="notes.md")
+            preview = get_markdown_preview(markdown.name, mode="html")
+        self.assertEqual(preview["mime_type"], "text/markdown")
+        self.assertIn("<h1>Title</h1>", preview["content"])
+        self.assertIn("<li>item</li>", preview["content"])
+
+    def test_markdown_preview_returns_raw_content_for_raw_mode(self):
+        with self.set_user(OWNER):
+            markdown = self.upload(b"# Title\\n\\nraw line", filename="notes.md")
+            preview = get_markdown_preview(markdown.name, mode="raw")
+        self.assertEqual(preview["content"], "# Title\\n\\nraw line")
+
+    def test_markdown_preview_blocks_non_markdown_file_types(self):
+        with self.set_user(OWNER):
+            file = self.upload(b"not markdown", filename="note.txt")
+            with self.assertRaises(frappe.ValidationError):
+                get_markdown_preview(file.name, mode="html")
+
+    def test_markdown_preview_denies_unread_users(self):
+        with self.set_user(OWNER):
+            markdown = self.upload(b"# Secret", filename="notes.md")
+
+        with self.set_user(OTHER_USER), self.assertRaises(frappe.PermissionError):
+            get_markdown_preview(markdown.name, mode="html")
+
+    def test_markdown_preview_marks_truncated_response_for_large_markdown(self):
+        large = b"A" * (TEXT_PREVIEW_LIMIT_BYTES + 20)
+        with self.set_user(OWNER), patch("suite.drive.api.files.validate_quota"):
+            markdown = self.upload(large, filename="large.md", total_size=len(large))
+
+        with self.set_user(OWNER):
+            preview = get_markdown_preview(markdown.name, mode="html")
+        self.assertTrue(preview["truncated"])
+        self.assertLess(len(preview["content"]), len(large))
 
     def test_content_link_cannot_be_forged_to_hijack_another_users_document(self):
         """content_doctype/content_docname are the sole permission delegation
