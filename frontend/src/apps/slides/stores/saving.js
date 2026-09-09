@@ -68,6 +68,10 @@ const savePresentationToLocalDB = async (data) => {
 	})
 }
 
+// the draft is a copy of what the editor holds; a store that refuses it must not
+// stop the push, which is what gets the edits somewhere durable
+const writeDraft = (record) => savePresentationToLocalDB(record).catch(() => {})
+
 const getPresentationFromLocalDB = async (id) => {
 	if (id === undefined || id === null || id === '') {
 		return null
@@ -133,7 +137,7 @@ const syncSnapshotToServer = async (snapshot, id, generation) => {
 	if (presentationId.value !== id) {
 		// an edit made mid-save lives in slides.value, which belongs to another
 		// presentation now and can't be read back; the server has this snapshot
-		await savePresentationToLocalDB({
+		await writeDraft({
 			...snapshot,
 			dirty: false,
 			updatedAt: Date.now(),
@@ -147,7 +151,7 @@ const syncSnapshotToServer = async (snapshot, id, generation) => {
 	// local copy has to keep it and stay dirty; baseModified tracks the server version
 	const editedDuringSave = generationFor(id) !== generation
 
-	await savePresentationToLocalDB({
+	await writeDraft({
 		...snapshot,
 		content: editedDuringSave ? getLatestSlideContent() : snapshot.content,
 		dirty: editedDuringSave,
@@ -163,34 +167,32 @@ const getLatestSlideContent = () => {
 
 const saveCurrentState = async () => {
 	if (inReadonlyMode.value) return
-	if (isSaving.value) return
 	if (!slides.value?.length || !presentationId.value) return
+
+	const idAtSnapshot = presentationId.value
+	const generationAtSnapshot = generationFor(idAtSnapshot)
+	const baseAtSnapshot = presentationDoc.value?.modified
+
+	// the snapshot is pushed as held, never read back: another tab editing the same
+	// presentation shares this record and would hand us its content to send as ours
+	const snapshot = {
+		id: idAtSnapshot,
+		content: getLatestSlideContent(),
+		updatedAt: Date.now(),
+		dirty: true,
+		baseModified: baseAtSnapshot,
+	}
+	// written before the gate, so the draft follows the edits while a push is stuck
+	await writeDraft(snapshot)
+
+	if (isSaving.value) return
+	// if offline, stay dirty so we retry once back online
+	if (!navigator.onLine) return
+	if (baseAtSnapshot === refusedBase) return
 
 	isSaving.value = true
 
-	// the base is read in the catch too, to record which version the server refused
-	let baseAtSnapshot
-
 	try {
-		const idAtSnapshot = presentationId.value
-		const generationAtSnapshot = generationFor(idAtSnapshot)
-		baseAtSnapshot = presentationDoc.value?.modified
-
-		// the snapshot is pushed as held, never read back: another tab editing the same
-		// presentation shares this record and would hand us its content to send as ours
-		const snapshot = {
-			id: idAtSnapshot,
-			content: getLatestSlideContent(),
-			updatedAt: Date.now(),
-			dirty: true,
-			baseModified: baseAtSnapshot,
-		}
-		await savePresentationToLocalDB(snapshot)
-
-		// if offline, stay dirty so we retry once back online
-		if (!navigator.onLine) return
-		if (baseAtSnapshot === refusedBase) return
-
 		// only mark clean once the server actually has the changes,
 		// and only if no edit arrived while this save was in flight
 		await syncSnapshotToServer(snapshot, idAtSnapshot, generationAtSnapshot)

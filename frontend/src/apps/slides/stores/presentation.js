@@ -308,15 +308,31 @@ const toSlideRow = (slide) => ({
 	fade_unmatched_elements: slide.fadeUnmatchedElements,
 })
 
+// a push that never answers would otherwise hold the save gate for good
+const SAVE_TIMEOUT_MS = 30_000
+
 const savePresentationDoc = async (updatedSlides, baseModified) => {
 	const doc = presentationDoc.value
-	// the base is the version this content was built on, carried by the snapshot: reading
-	// it live would let content written against an older doc pass the server's check
-	const { modified } = await call('suite.slides.api.slides.save_slides', {
-		name: doc.name,
-		slides: updatedSlides.map(toSlideRow),
-		base_modified: baseModified,
-	})
+	const controller = new AbortController()
+	const timer = setTimeout(() => controller.abort(), SAVE_TIMEOUT_MS)
+	let response
+	try {
+		// the base is the version this content was built on, carried by the snapshot: reading
+		// it live would let content written against an older doc pass the server's check
+		response = await frappeRequest({
+			url: 'suite.slides.api.slides.save_slides',
+			method: 'POST',
+			params: {
+				name: doc.name,
+				slides: updatedSlides.map(toSlideRow),
+				base_modified: baseModified,
+			},
+			signal: controller.signal,
+		})
+	} finally {
+		clearTimeout(timer)
+	}
+	const { modified } = response
 
 	// the editor can move on mid-save; stamping then would mark another
 	// presentation with this save's version

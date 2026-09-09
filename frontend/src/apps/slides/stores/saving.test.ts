@@ -165,4 +165,47 @@ describe('saveCurrentState', () => {
 		await saveCurrentState()
 		expect(pushes).toBe(2)
 	})
+
+	it('pushes even when the draft store refuses the write', async () => {
+		markDirty()
+
+		const put = vi.spyOn(IDBObjectStore.prototype, 'put').mockImplementation(() => {
+			throw new Error('quota exceeded')
+		})
+		let pushes = 0
+		serverSave = async () => {
+			pushes++
+			presentationDoc.value = { modified: 'M2' }
+			return 'M2'
+		}
+
+		await saveCurrentState()
+		put.mockRestore()
+
+		// the server copy is what makes the edits durable; a broken draft store is not a save failure
+		expect(pushes).toBe(1)
+		expect(dirty.value).toBe(false)
+		expect(saveFailed.value).toBe(false)
+	})
+
+	it('keeps writing the draft while a push is stuck', async () => {
+		markDirty()
+
+		let release: (modified: string) => void = () => {}
+		serverSave = () => new Promise((resolve) => (release = resolve))
+		const stuck = saveCurrentState()
+		await new Promise((resolve) => setTimeout(resolve))
+
+		slides.value[0].background = '#00ff00ff'
+		markDirty()
+		await saveCurrentState()
+
+		// the second edit never got a push, but a crash now must still find it
+		const local: any = await getPresentationFromLocalDB('p1')
+		expect(local.content[0].background).toBe('#00ff00ff')
+		expect(local.dirty).toBe(true)
+
+		release('M2')
+		await stuck
+	})
 })
