@@ -311,8 +311,7 @@ const toSlideRow = (slide) => ({
 // a push that never answers would otherwise hold the save gate for good
 const SAVE_TIMEOUT_MS = 30_000
 
-const savePresentationDoc = async (updatedSlides, baseModified) => {
-	const doc = presentationDoc.value
+const savePresentationDoc = async (id, updatedSlides, baseModified) => {
 	const controller = new AbortController()
 	const timer = setTimeout(() => controller.abort(), SAVE_TIMEOUT_MS)
 	let response
@@ -323,7 +322,7 @@ const savePresentationDoc = async (updatedSlides, baseModified) => {
 			url: 'suite.slides.api.slides.save_slides',
 			method: 'POST',
 			params: {
-				name: doc.name,
+				name: id,
 				slides: updatedSlides.map(toSlideRow),
 				base_modified: baseModified,
 			},
@@ -336,7 +335,7 @@ const savePresentationDoc = async (updatedSlides, baseModified) => {
 
 	// the editor can move on mid-save; stamping then would mark another
 	// presentation with this save's version
-	if (presentationDoc.value === doc) doc.modified = modified
+	if (presentationDoc.value?.name === id) presentationDoc.value.modified = modified
 
 	return modified
 }
@@ -448,6 +447,8 @@ const resetEditorState = () => {
 	slidesLength.value = 0
 	commandHistory.clearHistory()
 	markClean()
+	// a push landing now would otherwise read the blank slides back as this presentation's edit
+	presentationId.value = null
 }
 
 export {

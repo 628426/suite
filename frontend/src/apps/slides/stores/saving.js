@@ -100,6 +100,10 @@ const dirty = ref(false)
 
 const isSaving = ref(false)
 
+// what the gate turned away, per presentation: a push that lands after the editor
+// left takes over from here, since nothing else will push that presentation again
+const queuedSnapshots = new Map()
+
 // bumped on every markDirty so a save can tell if edits arrived while it was in flight;
 // per presentation, since loading one marks it dirty and must not disturb another's save
 const dirtyGenerations = new Map()
@@ -126,17 +130,27 @@ const saveFailed = ref(false)
 let refusedBase = null
 
 const syncSnapshotToServer = async (snapshot, id, generation) => {
-	// the resource points at whatever the editor moved on to, so this content
-	// would land on the wrong document; the snapshot stays dirty and gets retried
-	if (presentationId.value !== id) return
-
 	// the version this save produced, read from its own response: presentationDoc
 	// may already point at another presentation by the time it resolves
-	const savedModified = await savePresentationDoc(snapshot.content, snapshot.baseModified)
+	const savedModified = await savePresentationDoc(
+		snapshot.id,
+		snapshot.content,
+		snapshot.baseModified,
+	)
 
 	if (presentationId.value !== id) {
-		// an edit made mid-save lives in slides.value, which belongs to another
-		// presentation now and can't be read back; the server has this snapshot
+		// an edit made mid-save was queued as the editor left; it was built on what the
+		// server just took, so it goes out on that base, stamped into the draft first so
+		// a push that never lands still leaves the draft current for its next load
+		const tail = queuedSnapshots.get(id)
+		queuedSnapshots.delete(id)
+		if (tail) {
+			const next = { ...tail, baseModified: savedModified }
+			await writeDraft(next)
+			return syncSnapshotToServer(next, id, generationFor(id))
+		}
+		// slides.value belongs to another presentation now and can't be read back;
+		// the server has this snapshot
 		await writeDraft({
 			...snapshot,
 			dirty: false,
@@ -150,6 +164,7 @@ const syncSnapshotToServer = async (snapshot, id, generation) => {
 	// an edit made mid-save isn't in the snapshot the server just took, so the
 	// local copy has to keep it and stay dirty; baseModified tracks the server version
 	const editedDuringSave = generationFor(id) !== generation
+	queuedSnapshots.delete(id)
 
 	await writeDraft({
 		...snapshot,
@@ -185,7 +200,10 @@ const saveCurrentState = async () => {
 	// written before the gate, so the draft follows the edits while a push is stuck
 	await writeDraft(snapshot)
 
-	if (isSaving.value) return
+	if (isSaving.value) {
+		queuedSnapshots.set(idAtSnapshot, snapshot)
+		return
+	}
 	// if offline, stay dirty so we retry once back online
 	if (!navigator.onLine) return
 	if (baseAtSnapshot === refusedBase) return

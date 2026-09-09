@@ -244,15 +244,18 @@ const hideOpenDialogs = () => {
 	deleteDialog?.close()
 }
 
+// the open editor and the selection belong to the presentation being left
+const leavePresentation = () => {
+	flushPendingBlur()
+	resetFocus()
+	saveChanges()
+}
+
 const handleDeactivated = () => {
 	thumbnailCaptureRef.value?.reset()
 	clearInterval(autosaveInterval)
 
-	if (router.currentRoute.value.name !== 'slides-slideshow') {
-		flushPendingBlur()
-		resetFocus()
-		saveChanges()
-	}
+	if (router.currentRoute.value.name !== 'slides-slideshow') leavePresentation()
 }
 
 const handleBeforeUnmount = () => {
@@ -281,13 +284,15 @@ watch(
 	() => route.name,
 	(name) => {
 		if (!['slides-editor-new', 'slides-editor'].includes(name)) return
-		inReadonlyMode.value = props.editorAccess == 'view'
 		if (name === 'slides-editor-new') {
+			leavePresentation()
+			inReadonlyMode.value = props.editorAccess == 'view'
 			resetEditorState()
 			themeDialogAction.value = 'create'
 			showThemeDialog.value = true
 			return
 		}
+		inReadonlyMode.value = props.editorAccess == 'view'
 		loadEditorState()
 	},
 	{ immediate: true },
@@ -297,6 +302,8 @@ watch(
 	() => props.presentationId,
 	(id, prevId) => {
 		if (!id || !prevId || id === prevId) return
+		// before the mode flips: a switch into a view-only presentation still has edits to flush
+		leavePresentation()
 		inReadonlyMode.value = props.editorAccess == 'view'
 		thumbnailCaptureRef.value?.reset()
 		commandHistory.clearHistory()

@@ -6,13 +6,14 @@ const presentationDoc = ref<any>({ modified: 'M1' })
 const inReadonlyMode = ref(false)
 const slides = ref<any[]>([{ clientId: 'c1', background: '#ff0000ff', elements: [] }])
 
-let serverSave: (content: any, baseModified?: string) => Promise<string | undefined>
+let serverSave: (id: string, content: any, baseModified?: string) => Promise<string | undefined>
 
 vi.mock('@/apps/slides/stores/presentation', () => ({
 	presentationId,
 	presentationDoc,
 	inReadonlyMode,
-	savePresentationDoc: (content: any, baseModified?: string) => serverSave(content, baseModified),
+	savePresentationDoc: (id: string, content: any, baseModified?: string) =>
+		serverSave(id, content, baseModified),
 }))
 
 vi.mock('@/apps/slides/stores/slide', () => ({ slides }))
@@ -68,7 +69,6 @@ describe('saveCurrentState', () => {
 		serverSave = async () => {
 			// resetEditorState() blanks slides, then the editor loads another presentation
 			slides.value = []
-			markDirty()
 			presentationId.value = 'p2'
 			// presentationDoc belongs to p2 by now, so baseModified has to come
 			// from what this save returned
@@ -101,7 +101,7 @@ describe('saveCurrentState', () => {
 		markDirty()
 
 		let sent: any
-		serverSave = async (content, baseModified) => {
+		serverSave = async (_id, content, baseModified) => {
 			sent = { content, baseModified }
 			// a rename lands between the draft write and the push
 			presentationDoc.value = { modified: 'M9' }
@@ -207,5 +207,63 @@ describe('saveCurrentState', () => {
 
 		release('M2')
 		await stuck
+	})
+
+	it('pushes what the editor typed mid-push once it moved on', async () => {
+		markDirty()
+
+		const sent: any[] = []
+		serverSave = async (id, content, baseModified) => {
+			sent.push({ id, content, baseModified })
+			if (sent.length > 1) return 'M3'
+			// the tail typed mid-push is turned away by the gate as the editor leaves, then
+			// another presentation loads
+			slides.value[0].background = '#00ff00ff'
+			markDirty()
+			await saveCurrentState()
+			slides.value = []
+			presentationId.value = 'p2'
+			presentationDoc.value = { modified: 'M9' }
+			return 'M2'
+		}
+
+		await saveCurrentState()
+
+		// the switch never waited; the push that was in flight carried the tail out itself
+		expect(sent).toHaveLength(2)
+		expect(sent[1].id).toBe('p1')
+		expect(sent[1].content[0].background).toBe('#00ff00ff')
+		// built on the snapshot the server had just taken
+		expect(sent[1].baseModified).toBe('M2')
+		const local: any = await getPresentationFromLocalDB('p1')
+		expect(local.content[0].background).toBe('#00ff00ff')
+		expect(local.dirty).toBe(false)
+		expect(local.baseModified).toBe('M3')
+	})
+
+	it('keeps the tail on the new base when its own push dies', async () => {
+		markDirty()
+
+		let pushes = 0
+		serverSave = async () => {
+			if (++pushes > 1) throw new Error('network')
+			slides.value[0].background = '#00ff00ff'
+			markDirty()
+			await saveCurrentState()
+			slides.value = []
+			presentationId.value = 'p2'
+			presentationDoc.value = { modified: 'M9' }
+			return 'M2'
+		}
+
+		await saveCurrentState()
+
+		// the draft is the only copy of the tail now; its base must be the version the server
+		// holds, or the next load of p1 would throw it away as stale
+		const local: any = await getPresentationFromLocalDB('p1')
+		expect(local.content[0].background).toBe('#00ff00ff')
+		expect(local.dirty).toBe(true)
+		expect(local.baseModified).toBe('M2')
+		expect(saveFailed.value).toBe(true)
 	})
 })
