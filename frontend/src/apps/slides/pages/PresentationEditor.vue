@@ -56,6 +56,7 @@ import {
 	watch,
 	onMounted,
 	onActivated,
+	onDeactivated,
 	onBeforeUnmount,
 	provide,
 	nextTick,
@@ -103,7 +104,7 @@ import {
 	addEmptySlide,
 	handleInsertSlide,
 } from '@/apps/slides/stores/slide'
-import { resetFocus, focusElementId } from '@/apps/slides/stores/element'
+import { resetFocus, flushPendingBlur, focusElementId } from '@/apps/slides/stores/element'
 import {
 	commandHistory,
 	setCommandHistory,
@@ -180,6 +181,7 @@ const updateRoute = async (slug) => {
 }
 
 const initAutoSave = () => {
+	clearInterval(autosaveInterval)
 	autosaveInterval = setInterval(handleAutoSave, 500)
 }
 
@@ -242,14 +244,19 @@ const hideOpenDialogs = () => {
 	deleteDialog?.close()
 }
 
-const handleBeforeUnmount = () => {
+const handleDeactivated = () => {
 	thumbnailCaptureRef.value?.reset()
 	clearInterval(autosaveInterval)
 
 	if (router.currentRoute.value.name !== 'slides-slideshow') {
+		flushPendingBlur()
 		resetFocus()
 		saveChanges()
 	}
+}
+
+const handleBeforeUnmount = () => {
+	handleDeactivated()
 	window.removeEventListener('beforeunload', handleBeforeUnload)
 	window.removeEventListener('popstate', hideOpenDialogs)
 }
@@ -311,6 +318,8 @@ watch(
 )
 
 onMounted(() => handleMounted())
+
+onDeactivated(() => handleDeactivated())
 
 onBeforeUnmount(() => handleBeforeUnmount())
 
