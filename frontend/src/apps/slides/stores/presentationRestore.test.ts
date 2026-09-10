@@ -4,6 +4,7 @@ import { ref } from 'vue'
 const slides = ref<any[]>([])
 const markDirty = vi.fn()
 const markClean = vi.fn()
+const writeDraft = vi.fn()
 const warning = vi.fn()
 let local: any = null
 let served: any = null
@@ -33,6 +34,7 @@ vi.mock('@/apps/slides/stores/element', () => ({ normalizeZIndices: (els: any) =
 vi.mock('@/apps/slides/stores/saving', () => ({
 	markDirty,
 	markClean,
+	writeDraft,
 	getPresentationFromLocalDB: async () => local,
 }))
 
@@ -98,6 +100,8 @@ describe('loading a presentation', () => {
 		expect(slides.value[0].background).toBe('#ff0000ff')
 		expect(warning).toHaveBeenCalled()
 		expect(markClean).toHaveBeenCalled()
+		// or the next load finds the same draft and discards it again
+		expect(writeDraft).toHaveBeenCalledWith(expect.objectContaining({ dirty: false }))
 	})
 })
 

@@ -294,6 +294,7 @@ export {
 	dirty,
 	markDirty,
 	markClean,
+	writeDraft,
 	saveFailed,
 	saveRefused,
 	getPresentationFromLocalDB,

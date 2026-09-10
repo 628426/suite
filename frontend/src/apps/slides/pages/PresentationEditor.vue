@@ -94,9 +94,11 @@ import {
 	presentationId,
 	initPresentationDoc,
 	startLoad,
+	isLatestLoad,
 	presentationDoc,
 	templateList,
 	templateListResource,
+	viewOnly,
 	inReadonlyMode,
 	createPresentationResource,
 	duplicatePresentation,
@@ -140,8 +142,6 @@ const route = useRoute()
 const router = useRouter()
 
 let autosaveInterval = null
-// re-entry from Home fires both the route and the props watcher; only the last load lands
-let loads = 0
 const thumbnailCaptureRef = useTemplateRef('thumbnailCaptureRef')
 
 const props = defineProps({
@@ -237,24 +237,26 @@ const performAfterLoadOperations = () => {
 const loadEditorState = async () => {
 	const id = props.presentationId
 	if (!id) return
-	const load = ++loads
+	// re-entry from Home fires both the route and the props watcher; only the last load lands
+	const load = startLoad()
+	// read off the prop: the store flag follows one watcher later
+	const readonly = props.editorAccess == 'view'
 
-	if (props.editorAccess != 'view') {
+	if (!readonly) {
 		const held = await acquireEditLock(id, handleLockLost)
-		if (load !== loads) return
-		if (!held) inReadonlyMode.value = true
+		if (!isLatestLoad(load)) return
+		// refused with no other tab holding it: the editor left while the request was pending
+		if (!held && !lockedElsewhere.value) return
 	}
 
 	performBeforeLoadOperations()
 	if (presentationDoc.value && presentationId.value === id && slides.value.length) {
-		// an earlier load may still be in flight
-		startLoad()
 		performAfterLoadOperations()
 		return
 	}
 
 	// a tab locked out of editing still has read access to the full document
-	const doc = await initPresentationDoc(id, props.editorAccess == 'view')
+	const doc = await initPresentationDoc(id, readonly, load)
 	// a later load took the editor over
 	if (!doc) return
 	performAfterLoadOperations()
@@ -262,14 +264,13 @@ const loadEditorState = async () => {
 
 const takeOverEditing = async () => {
 	const id = props.presentationId
-	const load = ++loads
+	const load = startLoad()
 	await acquireEditLock(id, handleLockLost, { steal: true })
-	if (load !== loads) return
+	if (!isLatestLoad(load)) return
 
-	inReadonlyMode.value = false
 	performBeforeLoadOperations()
 	// the tab that held the lock has saved since this one loaded
-	const doc = await initPresentationDoc(id)
+	const doc = await initPresentationDoc(id, false, load)
 	if (!doc) return
 	commandHistory.clearHistory()
 	performAfterLoadOperations()
@@ -303,7 +304,6 @@ const leavePresentation = () => {
 const handleLockLost = () => {
 	flushEdits()
 	clearInterval(autosaveInterval)
-	inReadonlyMode.value = true
 }
 
 const handleDeactivated = () => {
@@ -340,15 +340,15 @@ watch(
 	() => route.name,
 	(name) => {
 		if (!['slides-editor-new', 'slides-editor'].includes(name)) return
+
 		if (name === 'slides-editor-new') {
 			leavePresentation()
-			inReadonlyMode.value = props.editorAccess == 'view'
 			resetEditorState()
 			themeDialogAction.value = 'create'
 			showThemeDialog.value = true
 			return
 		}
-		inReadonlyMode.value = props.editorAccess == 'view'
+
 		loadEditorState()
 	},
 	{ immediate: true },
@@ -360,7 +360,6 @@ watch(
 		if (!id || !prevId || id === prevId) return
 		// before the mode flips: a switch into a view-only presentation still has edits to flush
 		leavePresentation()
-		inReadonlyMode.value = props.editorAccess == 'view'
 		thumbnailCaptureRef.value?.reset()
 		commandHistory.clearHistory()
 		loadEditorState()
@@ -373,11 +372,13 @@ onBeforeRouteLeave(() => {
 
 window.addEventListener('popstate', hideOpenDialogs)
 
+// after the switch watcher, so the presentation being left is flushed while it may still write
 watch(
 	() => props.editorAccess,
-	(doc) => {
-		inReadonlyMode.value = doc === 'view'
+	(access) => {
+		viewOnly.value = access === 'view'
 	},
+	{ immediate: true },
 )
 
 onMounted(() => handleMounted())

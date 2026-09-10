@@ -5,7 +5,8 @@ import tinycolor from 'tinycolor2'
 
 import { router } from '@/apps/slides/router'
 import { slides } from './slide'
-import { markClean, markDirty, getPresentationFromLocalDB } from './saving'
+import { markClean, markDirty, writeDraft, getPresentationFromLocalDB } from './saving'
+import { lockedElsewhere } from './editLock'
 import { normalizeZIndices } from '@/apps/slides/stores/element'
 import { normalizeColor } from '@/apps/slides/utils/color'
 import { appDocumentTitle } from '@/utils/documentTitle'
@@ -15,6 +16,12 @@ import { commandHistory } from './historyMeta'
 const presentationDoc = ref()
 
 const presentationId = ref('')
+
+// the user may not write this presentation at all
+const viewOnly = ref(false)
+
+// no write access, or another tab of this browser holds the edit lock
+const inReadonlyMode = computed(() => viewOnly.value || lockedElsewhere.value)
 
 const applyReverseTransition = ref(false)
 
@@ -57,14 +64,11 @@ const updatePresentationTitle = async (id, newTitle) => {
 	return response.slug
 }
 
-// adopting a stamp over a stale base would let the next save wipe rows saved elsewhere
-const adoptServerVersion = async (id, { modified, base_modified }) => {
+// adopting a stamp over a stale base would let the next save wipe rows saved elsewhere;
+// left stale, that save is refused and the tab told to reload, like any other conflict
+const adoptServerVersion = (id, { modified, base_modified }) => {
 	if (presentationDoc.value?.name !== id) return
-	if (presentationDoc.value.modified === base_modified) {
-		presentationDoc.value.modified = modified
-	} else {
-		await reloadAfterConflict(id)
-	}
+	if (presentationDoc.value.modified === base_modified) presentationDoc.value.modified = modified
 }
 
 const getElementDimensions = async (el) => {
@@ -231,6 +235,8 @@ let latestLoad = 0
 
 const startLoad = () => ++latestLoad
 
+const isLatestLoad = (load) => load === latestLoad
+
 // touches no editor state, so a save during the load still targets what is on screen
 const fetchPresentation = async (name) => {
 	// the service worker intercepts GETs only, and an offline copy warms exactly this
@@ -263,7 +269,11 @@ const fetchPresentation = async (name) => {
 		// server content at baseModified and there is nothing to push
 		return { doc, content: restored, dirty: local.dirty || repaired }
 	}
-	if (local?.dirty) toast.warning('Changes that never reached the server were discarded.')
+	if (local?.dirty) {
+		toast.warning('Changes that never reached the server were discarded.')
+		// left dirty, the same draft is found and discarded again on every load
+		if (!inReadonlyMode.value) await writeDraft({ ...local, dirty: false, updatedAt: Date.now() })
+	}
 
 	// persist the repair
 	return {
@@ -278,24 +288,15 @@ const showPresentation = (id, { doc, content, dirty }) => {
 	presentationDoc.value = doc
 	slides.value = content
 	slidesLength.value = content.length
-	if (dirty) markDirty()
+	// a tab that may not write has nothing of its own to push
+	if (dirty && !inReadonlyMode.value) markDirty()
 	else markClean()
 }
 
 const fetchReadonly = async (name, url) => {
-	const resource = createResource({
-		url,
-		method: 'GET',
-		auto: false,
-		makeParams: () => {
-			return { name: name }
-		},
-		transform(doc) {
-			normalizeSlideDoc(doc)
-		},
-	})
-	await resource.fetch()
-	return resource.data
+	const doc = await frappeRequest({ url, method: 'GET', params: { name } })
+	normalizeSlideDoc(doc)
+	return doc
 }
 
 // rows are matched by client_id on the server, so name, parent and idx stay out
@@ -340,23 +341,8 @@ const savePresentationDoc = async (id, updatedSlides, baseModified) => {
 	return modified
 }
 
-// another editor saved first: their version is the truth now, so take it in
-// place of the local snapshot rather than fight over whose rows survive
-const reloadAfterConflict = async (id) => {
-	if (presentationId.value !== id) return
-	toast.warning('This presentation was changed elsewhere. Showing the latest version.')
-	const load = startLoad()
-	const loaded = await fetchPresentation(id)
-	// the editor can move on mid-fetch
-	if (load !== latestLoad) return
-	showPresentation(id, loaded)
-	// undo still holds the discarded content and would save it right back
-	commandHistory.clearHistory()
-}
-
 // returns the committed doc, or null if a later load took over
-const initPresentationDoc = async (id, readonly = false) => {
-	const load = startLoad()
+const initPresentationDoc = async (id, readonly = false, load = startLoad()) => {
 	let loaded
 
 	if (readonly) {
@@ -375,7 +361,7 @@ const initPresentationDoc = async (id, readonly = false) => {
 		loaded = await fetchPresentation(id)
 	}
 
-	if (load !== latestLoad) return null
+	if (!isLatestLoad(load)) return null
 
 	showPresentation(id, loaded)
 	frappeRequest({
@@ -398,8 +384,6 @@ const templateListResource = createResource({
 const presentationTheme = computed(() => {
 	return presentationDoc.value?.theme
 })
-
-const inReadonlyMode = ref(false)
 
 const deletePresentation = async (presentation) => {
 	await call('suite.slides.doctype.presentation.presentation.delete_presentation', {
@@ -461,12 +445,14 @@ export {
 	templateList,
 	templateListResource,
 	presentationTheme,
+	viewOnly,
 	inReadonlyMode,
 	updatePresentationTitle,
 	adoptServerVersion,
 	savePresentationDoc,
 	initPresentationDoc,
 	startLoad,
+	isLatestLoad,
 	confirmDeletePresentation,
 	duplicatePresentation,
 	resetEditorState,
