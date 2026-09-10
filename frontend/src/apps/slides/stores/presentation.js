@@ -465,7 +465,6 @@ export {
 	updatePresentationTitle,
 	adoptServerVersion,
 	savePresentationDoc,
-	reloadAfterConflict,
 	initPresentationDoc,
 	startLoad,
 	confirmDeletePresentation,
