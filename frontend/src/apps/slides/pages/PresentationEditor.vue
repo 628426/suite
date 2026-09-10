@@ -289,20 +289,18 @@ const hideOpenDialogs = () => {
 }
 
 // the open editor and the selection belong to the presentation being left
-const flushEdits = () => {
+const leavePresentation = () => {
 	flushPendingBlur()
 	resetFocus()
 	saveChanges()
-}
-
-const leavePresentation = () => {
-	flushEdits()
 	releaseEditLock()
 }
 
-// another tab took the presentation over: the last edits go out, this tab only views now
+// the taking tab pushes what it finds in the draft; a push from here would race it
 const handleLockLost = () => {
-	flushEdits()
+	flushPendingBlur()
+	resetFocus()
+	saveDraft()
 	clearInterval(autosaveInterval)
 }
 

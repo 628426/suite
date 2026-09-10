@@ -971,7 +971,7 @@ const selectAllElements = (e) => {
 }
 
 const resetFocus = () => {
-	// a failed upload can leave the focus set with nothing selected
+	// a jump that empties the selection keeps a live caret, so the focus can outlast it
 	focusElementId.value = null
 	if (!activeElementIds.value.length) return
 

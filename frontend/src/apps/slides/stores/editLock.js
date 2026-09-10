@@ -48,8 +48,9 @@ const acquireEditLock = (id, onLost, { steal = false } = {}) => {
 				// a granted lock only rejects when another tab steals it
 				if (request !== requests || heldId !== id) return
 				heldId = null
-				lockedElsewhere.value = true
+				// the editor writes its last edits to the draft first, while it may still write
 				onLost?.()
+				lockedElsewhere.value = true
 			})
 	})
 }

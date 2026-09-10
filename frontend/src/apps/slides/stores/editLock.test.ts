@@ -89,6 +89,17 @@ describe('acquireEditLock', () => {
 		expect(lockedElsewhere.value).toBe(true)
 	})
 
+	it('lets the editor write the draft before it reads as locked out', async () => {
+		// the editor writes its last edits to the draft from onLost, and a locked-out tab writes nothing
+		let lockedDuringOnLost: boolean | null = null
+		await acquireEditLock('p1', () => (lockedDuringOnLost = lockedElsewhere.value))
+
+		otherTab('p1', { steal: true })
+		await settle()
+
+		expect(lockedDuringOnLost).toBe(false)
+	})
+
 	it('frees the lock for the next tab once released', async () => {
 		await acquireEditLock('p1')
 		releaseEditLock()
