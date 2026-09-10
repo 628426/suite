@@ -468,7 +468,6 @@ export {
 	reloadAfterConflict,
 	initPresentationDoc,
 	startLoad,
-	deletePresentation,
 	confirmDeletePresentation,
 	duplicatePresentation,
 	resetEditorState,
