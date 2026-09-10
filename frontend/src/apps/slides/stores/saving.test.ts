@@ -245,6 +245,65 @@ describe('saveCurrentState', () => {
 		expect(local.baseModified).toBe('M3')
 	})
 
+	it('drops a queued edit once the push it waited on fails', async () => {
+		markDirty()
+
+		let fail: (err: Error) => void = () => {}
+		serverSave = () => new Promise((_, reject) => (fail = reject))
+		const stuck = saveCurrentState()
+		await new Promise((resolve) => setTimeout(resolve))
+
+		// typed while the push hangs, turned away by the gate
+		slides.value[0].background = '#222222ff'
+		markDirty()
+		await saveCurrentState()
+
+		fail(new Error('network'))
+		await stuck
+
+		// typed after the failure; its push lands after the editor moved on
+		slides.value[0].background = '#333333ff'
+		markDirty()
+		const sent: string[] = []
+		serverSave = async (_id, content) => {
+			sent.push(content[0].background)
+			slides.value = []
+			presentationId.value = 'p2'
+			presentationDoc.value = { modified: 'M9' }
+			return 'M2'
+		}
+		await saveCurrentState()
+
+		// the queued edit is older than the one just pushed; sent as a tail it would put
+		// its content back over the server and the draft, and mark the draft clean
+		expect(sent).toEqual(['#333333ff'])
+		const local: any = await getPresentationFromLocalDB('p1')
+		expect(local.content[0].background).toBe('#333333ff')
+		expect(local.dirty).toBe(false)
+	})
+
+	it('rewrites the draft only when the edits moved on while the push is held back', async () => {
+		markDirty()
+
+		serverSave = async () => {
+			throw conflict()
+		}
+		const put = vi.spyOn(IDBObjectStore.prototype, 'put')
+
+		await saveCurrentState()
+		// nothing changed, and the refused base holds the push: a tick has nothing to write
+		await saveCurrentState()
+		expect(put).toHaveBeenCalledTimes(1)
+
+		slides.value[0].background = '#00ff00ff'
+		markDirty()
+		await saveCurrentState()
+		expect(put).toHaveBeenCalledTimes(2)
+		put.mockRestore()
+		const local: any = await getPresentationFromLocalDB('p1')
+		expect(local.content[0].background).toBe('#00ff00ff')
+	})
+
 	it('keeps the tail on the new base when its own push dies', async () => {
 		markDirty()
 

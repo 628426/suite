@@ -16,7 +16,7 @@
 			</Badge>
 			<Badge v-if="!inReadonlyMode && saveFailed && isOnline" variant="subtle" theme="amber" size="md">
 				<LucideCloudOff class="mr-1 size-3.5 stroke-[1.5]" />
-				<span>Save failed. Keep this tab open.</span>
+				<span>{{ saveFailedLabel }}</span>
 			</Badge>
 			<OfflineCopyButton v-if="canPin" />
 			<Button
@@ -46,13 +46,20 @@ import SharePopover from '@/apps/slides/components/SharePopover.vue'
 import OfflineCopyButton from '@/apps/slides/components/OfflineCopyButton.vue'
 
 import { presentationDoc } from '@/apps/slides/stores/presentation'
-import { saveFailed } from '@/apps/slides/stores/saving'
+import { saveFailed, saveRefused } from '@/apps/slides/stores/saving'
 import { isMediaOwner } from '@/apps/slides/utils/mediaUploads'
 import { useSessionStore } from '@/boot/session'
 import { useRoute } from 'vue-router'
 
 const isOnline = inject('isOnline', ref(false))
 const inReadonlyMode = inject('inReadonlyMode', ref(false))
+
+// a refused base never saves however long the tab stays open; only a reload moves it on
+const saveFailedLabel = computed(() =>
+	saveRefused.value
+		? 'Changed elsewhere. Reload to get the latest version.'
+		: 'Save failed. Keep this tab open.',
+)
 
 const emit = defineEmits(['startSlideShow', 'performDropdownAction'])
 

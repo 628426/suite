@@ -1,4 +1,4 @@
-import { ref } from 'vue'
+import { ref, computed } from 'vue'
 import {
 	presentationId,
 	savePresentationDoc,
@@ -78,7 +78,7 @@ const writeDraft = (record) => {
 		persistRequested = true
 		navigator.storage?.persist?.().catch(() => {})
 	}
-	return savePresentationToLocalDB(record).catch(() => {})
+	return savePresentationToLocalDB(record).then(() => true, () => false)
 }
 
 const getPresentationFromLocalDB = async (id) => {
@@ -130,8 +130,16 @@ const markDirty = () => {
 
 const markClean = () => {
 	dirty.value = false
-	// a save in flight still has a generation to compare against, so leave it alone
-	if (!isSaving.value) dirtyGenerations.delete(presentationId.value)
+}
+
+// the generation each presentation's draft holds; a blocked push would otherwise
+// rewrite the whole presentation on every tick
+const draftGenerations = new Map()
+
+const writeSnapshot = async (snapshot) => {
+	const generation = generationFor(snapshot.id)
+	if (draftGenerations.get(snapshot.id) === generation) return
+	if (await writeDraft(snapshot)) draftGenerations.set(snapshot.id, generation)
 }
 
 // true when an online save to the server failed; drives the "Not saved" indicator
@@ -139,7 +147,11 @@ const saveFailed = ref(false)
 
 // the base version the server refused: pushing it again fails the same way however long
 // we wait, so it is held until a reload or another presentation gives this tab a newer one
-let refusedBase = null
+const refusedBase = ref(null)
+
+const saveRefused = computed(
+	() => refusedBase.value != null && refusedBase.value === presentationDoc.value?.modified,
+)
 
 const syncSnapshotToServer = async (snapshot, id, generation) => {
 	// the version this save produced, read from its own response: presentationDoc
@@ -149,13 +161,13 @@ const syncSnapshotToServer = async (snapshot, id, generation) => {
 		snapshot.content,
 		snapshot.baseModified,
 	)
+	const tail = queuedSnapshots.get(id)
+	queuedSnapshots.delete(id)
 
 	if (presentationId.value !== id) {
 		// an edit made mid-save was queued as the editor left; it was built on what the
 		// server just took, so it goes out on that base, stamped into the draft first so
 		// a push that never lands still leaves the draft current for its next load
-		const tail = queuedSnapshots.get(id)
-		queuedSnapshots.delete(id)
 		if (tail) {
 			const next = { ...tail, baseModified: savedModified }
 			await writeDraft(next)
@@ -169,14 +181,12 @@ const syncSnapshotToServer = async (snapshot, id, generation) => {
 			updatedAt: Date.now(),
 			baseModified: savedModified,
 		})
-		dirtyGenerations.delete(id)
 		return
 	}
 
 	// an edit made mid-save isn't in the snapshot the server just took, so the
 	// local copy has to keep it and stay dirty; baseModified tracks the server version
 	const editedDuringSave = generationFor(id) !== generation
-	queuedSnapshots.delete(id)
 
 	await writeDraft({
 		...snapshot,
@@ -211,7 +221,7 @@ const takeSnapshot = () => {
 // the local copy alone, for when the edits must not go out yet
 const saveDraft = async () => {
 	const snapshot = takeSnapshot()
-	if (snapshot) await writeDraft(snapshot)
+	if (snapshot) await writeSnapshot(snapshot)
 }
 
 const saveCurrentState = async () => {
@@ -220,10 +230,9 @@ const saveCurrentState = async () => {
 
 	const idAtSnapshot = snapshot.id
 	const generationAtSnapshot = generationFor(idAtSnapshot)
-	const baseAtSnapshot = snapshot.baseModified
 
 	// written before the gate, so the draft follows the edits while a push is stuck
-	await writeDraft(snapshot)
+	await writeSnapshot(snapshot)
 
 	if (isSaving.value) {
 		queuedSnapshots.set(idAtSnapshot, snapshot)
@@ -231,7 +240,7 @@ const saveCurrentState = async () => {
 	}
 	// if offline, stay dirty so we retry once back online
 	if (!navigator.onLine) return
-	if (baseAtSnapshot === refusedBase) return
+	if (snapshot.baseModified === refusedBase.value) return
 
 	isSaving.value = true
 
@@ -245,10 +254,13 @@ const saveCurrentState = async () => {
 		if (presentationId.value !== idAtSnapshot) return
 		if (generationFor(idAtSnapshot) === generationAtSnapshot) markClean()
 	} catch (err) {
+		// the draft already holds what was queued; kept here it would ride out on a later
+		// push and put its older content over the newer edits
+		queuedSnapshots.delete(idAtSnapshot)
 		// keep dirty so autosave retries and beforeunload warns; log once per outage
 		if (!saveFailed.value) console.error('Save failed: ', err)
 		saveFailed.value = true
-		if (err?.exc_type === 'TimestampMismatchError') refusedBase = baseAtSnapshot
+		if (err?.exc_type === 'TimestampMismatchError') refusedBase.value = snapshot.baseModified
 	} finally {
 		isSaving.value = false
 	}
@@ -283,5 +295,6 @@ export {
 	markDirty,
 	markClean,
 	saveFailed,
+	saveRefused,
 	getPresentationFromLocalDB,
 }
