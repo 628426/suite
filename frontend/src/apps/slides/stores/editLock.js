@@ -7,6 +7,10 @@ let heldId = null
 let releaseHeld = () => {}
 let requests = 0
 
+// one request at a time: the manager holds a grant from the moment it is made, so a
+// second request sent in the same tick finds the lock taken by this tab's own first one
+let lastRequest = Promise.resolve()
+
 const lockName = (id) => `presentation-${id}`
 
 const releaseEditLock = () => {
@@ -25,19 +29,21 @@ const acquireEditLock = (id, onLost, { steal = false } = {}) => {
 	const options = steal ? { steal: true } : { ifAvailable: true }
 
 	return new Promise((resolve) => {
-		navigator.locks
-			.request(lockName(id), options, (lock) => {
-				// the editor moved on before the grant arrived; returning releases it
-				if (request !== requests) return resolve(false)
-				if (!lock) {
-					lockedElsewhere.value = true
-					return resolve(false)
-				}
-				heldId = id
-				lockedElsewhere.value = false
-				resolve(true)
-				return new Promise((done) => (releaseHeld = done))
-			})
+		lastRequest = lastRequest
+			.then(() =>
+				navigator.locks.request(lockName(id), options, (lock) => {
+					// the editor moved on before the grant arrived; returning releases it
+					if (request !== requests) return resolve(false)
+					if (!lock) {
+						lockedElsewhere.value = true
+						return resolve(false)
+					}
+					heldId = id
+					lockedElsewhere.value = false
+					resolve(true)
+					return new Promise((done) => (releaseHeld = done))
+				}),
+			)
 			.catch(() => {
 				// a granted lock only rejects when another tab steals it
 				if (request !== requests || heldId !== id) return

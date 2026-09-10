@@ -110,6 +110,13 @@ describe('acquireEditLock', () => {
 		expect(await acquireEditLock('p1')).toBe(false)
 	})
 
+	it('edits normally when the editor asks twice in one tick', async () => {
+		// a keep-alive re-entry fires the route and the props watcher together
+		acquireEditLock('p1')
+		expect(await acquireEditLock('p1')).toBe(true)
+		expect(lockedElsewhere.value).toBe(false)
+	})
+
 	it('edits normally where the browser has no lock manager', async () => {
 		Object.defineProperty(navigator, 'locks', { value: undefined, configurable: true })
 		expect(await acquireEditLock('p1')).toBe(true)
