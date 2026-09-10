@@ -20,6 +20,18 @@
 
 			<Toolbar v-if="!inReadonlyMode && presentationDoc" />
 
+			<div
+				v-if="lockedElsewhere"
+				class="absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-4 bg-surface-elevation-1 p-0.5 shadow-md"
+			>
+				<div class="flex items-center gap-2 p-2">
+					<LucideLock class="size-4 stroke-[1.5] text-ink-gray-7" />
+					<span class="text-base text-ink-gray-7">Editing in another tab</span>
+				</div>
+				<div class="h-5 w-px bg-surface-gray-4" />
+				<Button variant="ghost" @click="takeOverEditing">Edit here</Button>
+			</div>
+
 			<PropertiesPanel v-if="!inReadonlyMode" class="absolute bottom-0 right-0 top-0" />
 		</div>
 	</div>
@@ -64,7 +76,7 @@ import {
 } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 
-import { call, toast, usePageMeta, KeyboardShortcutsDialog } from 'frappe-ui'
+import { call, toast, usePageMeta, Button, KeyboardShortcutsDialog } from 'frappe-ui'
 import { appPageMeta } from '@/utils/documentTitle'
 
 import ExportView from '@/apps/slides/pages/ExportView.vue'
@@ -105,6 +117,7 @@ import {
 	handleInsertSlide,
 } from '@/apps/slides/stores/slide'
 import { resetFocus, flushPendingBlur, focusElementId } from '@/apps/slides/stores/element'
+import { lockedElsewhere, acquireEditLock, releaseEditLock } from '@/apps/slides/stores/editLock'
 import {
 	commandHistory,
 	setCommandHistory,
@@ -127,6 +140,8 @@ const route = useRoute()
 const router = useRouter()
 
 let autosaveInterval = null
+// re-entry from Home fires both the route and the props watcher; only the last load lands
+let loads = 0
 const thumbnailCaptureRef = useTemplateRef('thumbnailCaptureRef')
 
 const props = defineProps({
@@ -217,6 +232,13 @@ const performAfterLoadOperations = () => {
 const loadEditorState = async () => {
 	const id = props.presentationId
 	if (!id) return
+	const load = ++loads
+
+	if (props.editorAccess != 'view') {
+		const held = await acquireEditLock(id, handleLockLost)
+		if (load !== loads) return
+		if (!held) inReadonlyMode.value = true
+	}
 
 	performBeforeLoadOperations()
 	if (presentationDoc.value && presentationId.value === id && slides.value.length) {
@@ -226,9 +248,25 @@ const loadEditorState = async () => {
 		return
 	}
 
-	const doc = await initPresentationDoc(id, inReadonlyMode.value)
+	// a tab locked out of editing still has read access to the full document
+	const doc = await initPresentationDoc(id, props.editorAccess == 'view')
 	// a later load took the editor over
 	if (!doc) return
+	performAfterLoadOperations()
+}
+
+const takeOverEditing = async () => {
+	const id = props.presentationId
+	const load = ++loads
+	await acquireEditLock(id, handleLockLost, { steal: true })
+	if (load !== loads) return
+
+	inReadonlyMode.value = false
+	performBeforeLoadOperations()
+	// the tab that held the lock has saved since this one loaded
+	const doc = await initPresentationDoc(id)
+	if (!doc) return
+	commandHistory.clearHistory()
 	performAfterLoadOperations()
 }
 
@@ -245,10 +283,22 @@ const hideOpenDialogs = () => {
 }
 
 // the open editor and the selection belong to the presentation being left
-const leavePresentation = () => {
+const flushEdits = () => {
 	flushPendingBlur()
 	resetFocus()
 	saveChanges()
+}
+
+const leavePresentation = () => {
+	flushEdits()
+	releaseEditLock()
+}
+
+// another tab took the presentation over: the last edits go out, this tab only views now
+const handleLockLost = () => {
+	flushEdits()
+	clearInterval(autosaveInterval)
+	inReadonlyMode.value = true
 }
 
 const handleDeactivated = () => {
