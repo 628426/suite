@@ -81,7 +81,8 @@ class TestSaveSlides(IntegrationTestCase):
         (name,) = row_names(self.presentation)
         frappe.db.set_value("Slide", name, "thumbnail", "server-owned")
 
-        self.save([{**slide("a"), "thumbnail": "forged"}])
+        with self.assertRaises(frappe.ValidationError):
+            self.save([{**slide("a"), "thumbnail": "forged"}])
 
         self.assertEqual(frappe.db.get_value("Slide", name, "thumbnail"), "server-owned")
 
@@ -93,7 +94,8 @@ class TestSaveSlides(IntegrationTestCase):
         self.save([slide("a")])
         (name,) = row_names(self.presentation)
 
-        self.save([{**slide("a"), "name": "forged", "parent": "other", "owner": OTHER_USER}])
+        with self.assertRaises(frappe.ValidationError):
+            self.save([{**slide("a"), "name": "forged", "parent": "other", "owner": OTHER_USER}])
 
         self.assertEqual(row_names(self.presentation), [name])
         self.assertEqual(frappe.db.get_value("Slide", name, "owner"), OWNER)

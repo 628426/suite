@@ -42,11 +42,16 @@ def save_slides(name: str, slides: list[dict], base_modified: str) -> dict:
 
 
 def merge_rows(existing_rows, incoming):
-    """Rows match on client_id; anything unmatched is inserted."""
+    """Rows match on client_id; anything unmatched is inserted, so a client_id
+    listed twice keeps one row and gets a second."""
     by_client_id = {row.client_id: row for row in existing_rows if row.client_id}
     rows = []
     for idx, slide in enumerate(incoming, start=1):
-        values = {field: slide.get(field) for field in SLIDE_FIELDS if field in slide}
+        # loud, not dropped: a field the editor sends and the server ignores looks saved until reload
+        unknown = set(slide) - SLIDE_FIELDS
+        if unknown:
+            frappe.throw(_("Slide fields not accepted: {0}").format(", ".join(sorted(unknown))))
+        values = {field: slide[field] for field in SLIDE_FIELDS if field in slide}
         row = by_client_id.pop(values.get("client_id"), None)
         if row:
             row.update(values)
