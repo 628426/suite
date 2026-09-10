@@ -126,7 +126,7 @@ import {
 } from '@/apps/slides/stores/historyMeta'
 
 import { useShortcuts, showShortcutsModal } from '@/apps/slides/composables/useShortcuts'
-import { saveChanges, dirty } from '@/apps/slides/stores/saving'
+import { saveChanges, saveDraft, autosave, dirty } from '@/apps/slides/stores/saving'
 import {
 	refreshOfflineStatus,
 	warmOfflineCopyAssets,
@@ -182,8 +182,7 @@ usePageMeta(() => {
 onActivated(() => (document.title = pageTitle()))
 
 const handleAutoSave = () => {
-	if (isSlideInteractionActive.value || focusElementId.value != null) return
-	saveChanges()
+	autosave(isSlideInteractionActive.value || focusElementId.value != null)
 }
 
 const updateRoute = async (slug) => {
@@ -207,6 +206,11 @@ const handleBeforeUnload = (e) => {
 	}
 }
 
+// best effort: the tab is going away, whatever the draft store manages to take goes in
+const handlePageHide = () => {
+	if (dirty.value) saveDraft()
+}
+
 const loadTemplates = () => {
 	if (templateList.value.length || inReadonlyMode.value) return
 	templateListResource.fetch()
@@ -216,6 +220,7 @@ const performBeforeLoadOperations = () => {
 	if (inReadonlyMode.value) return
 
 	window.addEventListener('beforeunload', handleBeforeUnload)
+	window.addEventListener('pagehide', handlePageHide)
 }
 
 const performAfterLoadOperations = () => {
@@ -311,6 +316,7 @@ const handleDeactivated = () => {
 const handleBeforeUnmount = () => {
 	handleDeactivated()
 	window.removeEventListener('beforeunload', handleBeforeUnload)
+	window.removeEventListener('pagehide', handlePageHide)
 	window.removeEventListener('popstate', hideOpenDialogs)
 }
 

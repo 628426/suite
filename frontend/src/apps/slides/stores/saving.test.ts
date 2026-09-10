@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ref } from 'vue'
 
 const presentationId = ref('p1')
@@ -22,7 +22,10 @@ vi.mock('@/apps/slides/utils/helpers', () => ({
 	cloneObj: (obj: any) => JSON.parse(JSON.stringify(obj)),
 }))
 
-const { saveCurrentState, markDirty, dirty, saveFailed, getPresentationFromLocalDB } =
+let sessionUser: string | null = 'me@example.com'
+vi.mock('@/boot/session', () => ({ getSessionUser: () => sessionUser }))
+
+const { saveCurrentState, autosave, markDirty, dirty, saveFailed, getPresentationFromLocalDB } =
 	await import('./saving')
 
 const conflict = () => Object.assign(new Error('stale'), { exc_type: 'TimestampMismatchError' })
@@ -35,6 +38,7 @@ describe('saveCurrentState', () => {
 	beforeEach(() => {
 		base = `M${++opens}`
 		saveFailed.value = false
+		sessionUser = 'me@example.com'
 		presentationId.value = 'p1'
 		presentationDoc.value = { modified: base }
 		slides.value = [{ clientId: 'c1', background: '#ff0000ff', elements: [] }]
@@ -265,5 +269,65 @@ describe('saveCurrentState', () => {
 		expect(local.dirty).toBe(true)
 		expect(local.baseModified).toBe('M2')
 		expect(saveFailed.value).toBe(true)
+	})
+})
+
+describe('drafts', () => {
+	beforeEach(() => {
+		sessionUser = 'me@example.com'
+		presentationDoc.value = { modified: 'M1' }
+		slides.value = [{ clientId: 'c1', background: '#ff0000ff', elements: [] }]
+		serverSave = async () => 'M2'
+	})
+
+	it('ignores a draft another user of this browser left', async () => {
+		presentationId.value = 'p-user'
+		sessionUser = 'other@example.com'
+		markDirty()
+		await saveCurrentState()
+		expect(await getPresentationFromLocalDB('p-user')).not.toBeNull()
+
+		sessionUser = 'me@example.com'
+		expect(await getPresentationFromLocalDB('p-user')).toBeNull()
+	})
+})
+
+describe('autosave', () => {
+	let pushes = 0
+
+	beforeEach(() => {
+		// the draft store schedules its work with timers, so only the clock is faked
+		vi.useFakeTimers({ toFake: ['Date'] })
+		pushes = 0
+		presentationId.value = 'p-gated'
+		presentationDoc.value = { modified: 'M1' }
+		slides.value = [{ clientId: 'c1', background: '#ff0000ff', elements: [] }]
+		serverSave = async () => {
+			pushes++
+			return 'M2'
+		}
+	})
+
+	afterEach(() => {
+		vi.useRealTimers()
+	})
+
+	it('writes the draft once a gate has held the push for ten seconds', async () => {
+		markDirty()
+
+		// the caret sits in a text element the whole time
+		await autosave(true)
+		vi.advanceTimersByTime(5_000)
+		await autosave(true)
+		expect(await getPresentationFromLocalDB('p-gated')).toBeUndefined()
+
+		vi.advanceTimersByTime(6_000)
+		await autosave(true)
+		const local: any = await getPresentationFromLocalDB('p-gated')
+		expect(local.content[0].background).toBe('#ff0000ff')
+		expect(local.dirty).toBe(true)
+		// the gate still holds the push itself
+		expect(pushes).toBe(0)
+		expect(dirty.value).toBe(true)
 	})
 })

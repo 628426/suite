@@ -8,6 +8,7 @@ import {
 import { slides } from '@/apps/slides/stores/slide'
 import { cloneObj } from '@/apps/slides/utils/helpers'
 import { DRAFTS_DB_NAME } from '@/apps/slides/utils/slidesCaches'
+import { getSessionUser } from '@/boot/session'
 
 const DB_VERSION = 1
 const STORE = 'presentations'
@@ -68,9 +69,17 @@ const savePresentationToLocalDB = async (data) => {
 	})
 }
 
+let persistRequested = false
+
 // the draft is a copy of what the editor holds; a store that refuses it must not
 // stop the push, which is what gets the edits somewhere durable
-const writeDraft = (record) => savePresentationToLocalDB(record).catch(() => {})
+const writeDraft = (record) => {
+	if (!persistRequested) {
+		persistRequested = true
+		navigator.storage?.persist?.().catch(() => {})
+	}
+	return savePresentationToLocalDB(record).catch(() => {})
+}
 
 const getPresentationFromLocalDB = async (id) => {
 	if (id === undefined || id === null || id === '') {
@@ -86,7 +95,10 @@ const getPresentationFromLocalDB = async (id) => {
 		const req = store.get(id)
 
 		req.onsuccess = () => {
-			resolve(req.result)
+			const record = req.result
+			// stamped by whoever wrote it; a record another user of this browser left is not ours
+			if (record?.user && record.user !== getSessionUser()) return resolve(null)
+			resolve(record)
 		}
 
 		req.onerror = () => {
@@ -180,23 +192,36 @@ const getLatestSlideContent = () => {
 	return cloneObj(latestContent)
 }
 
-const saveCurrentState = async () => {
-	if (inReadonlyMode.value) return
-	if (!slides.value?.length || !presentationId.value) return
+// the snapshot is pushed as held, never read back: another tab editing the same
+// presentation shares this record and would hand us its content to send as ours
+const takeSnapshot = () => {
+	if (inReadonlyMode.value) return null
+	if (!slides.value?.length || !presentationId.value) return null
 
-	const idAtSnapshot = presentationId.value
-	const generationAtSnapshot = generationFor(idAtSnapshot)
-	const baseAtSnapshot = presentationDoc.value?.modified
-
-	// the snapshot is pushed as held, never read back: another tab editing the same
-	// presentation shares this record and would hand us its content to send as ours
-	const snapshot = {
-		id: idAtSnapshot,
+	return {
+		id: presentationId.value,
+		user: getSessionUser(),
 		content: getLatestSlideContent(),
 		updatedAt: Date.now(),
 		dirty: true,
-		baseModified: baseAtSnapshot,
+		baseModified: presentationDoc.value?.modified,
 	}
+}
+
+// the local copy alone, for when the edits must not go out yet
+const saveDraft = async () => {
+	const snapshot = takeSnapshot()
+	if (snapshot) await writeDraft(snapshot)
+}
+
+const saveCurrentState = async () => {
+	const snapshot = takeSnapshot()
+	if (!snapshot) return
+
+	const idAtSnapshot = snapshot.id
+	const generationAtSnapshot = generationFor(idAtSnapshot)
+	const baseAtSnapshot = snapshot.baseModified
+
 	// written before the gate, so the draft follows the edits while a push is stuck
 	await writeDraft(snapshot)
 
@@ -234,9 +259,25 @@ const saveChanges = async () => {
 	await saveCurrentState()
 }
 
+// a text element kept focused, or a drag kept going, holds the push back; past this
+// the draft is written anyway so a closed tab does not take the edits with it
+const VALVE_MS = 10_000
+let gatedSince = null
+
+const autosave = (gated) => {
+	if (!gated || !dirty.value) {
+		gatedSince = null
+		return saveChanges()
+	}
+	gatedSince ??= Date.now()
+	if (Date.now() - gatedSince > VALVE_MS) return saveDraft()
+}
+
 export {
 	saveCurrentState,
 	saveChanges,
+	saveDraft,
+	autosave,
 	isSaving,
 	dirty,
 	markDirty,

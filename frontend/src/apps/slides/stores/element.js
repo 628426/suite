@@ -971,10 +971,11 @@ const selectAllElements = (e) => {
 }
 
 const resetFocus = () => {
+	// a failed upload can leave the focus set with nothing selected
+	focusElementId.value = null
 	if (!activeElementIds.value.length) return
 
 	activeElementIds.value = []
-	focusElementId.value = null
 	pairElementId.value = null
 }
 
