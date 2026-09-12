@@ -61,6 +61,7 @@ import {
 } from '@/apps/drive/utils/files'
 import { currentFolder } from '@/apps/drive/data/currentFolder'
 import ErrorPage from '@/apps/drive/components/ErrorPage.vue'
+import { isMarkdownFile } from '@/utils/markdown'
 
 const router = useRouter()
 const props = defineProps({
@@ -107,7 +108,7 @@ onKeyStroke('ArrowRight', (e) => {
 
 const onSuccess = async (entity) => {
   // temporary hack: #475
-  if (isWriterDocument(entity)) {
+  if (isWriterDocument(entity) || isMarkdownFile(entity)) {
     await router.push({ name: 'writer-document', params: { id: entity.name } })
     return
   }

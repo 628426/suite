@@ -44,6 +44,25 @@ Provisioning Stalwart mail servers (Mail Cluster, Mail Server, Server Deployment
 
 ## Under the Hood
 
+### Markdown preview
+
+Markdown files open in Writer with **Preview** selected and a plain text box for raw
+Markdown in an **Editor** tab. Switching tabs keeps the text box and its content mounted.
+Drive's file preview also renders `.md` and `.markdown` files, with the original text
+available in a **Source** tab. Other text and code files keep their plain-text view.
+
+Rendering uses [Marked](https://marked.js.org/) (MIT), already used by Frappe UI,
+with Suite's existing [DOMPurify](https://github.com/cure53/DOMPurify) dependency
+(Apache-2.0 or MPL-2.0). Tables, task lists, fenced code blocks, links and images
+render in the browser; HTML is sanitised before display. No external rendering
+service is required. Relative links and images use the page URL; Drive sibling-file
+resolution and Mermaid diagrams are not included.
+
+Raw text edits appear in the preview for the current session. Saving changes back
+to the uploaded file is not implemented by this viewer.
+
+### Shared infrastructure
+
 - [**Frappe Framework**](https://github.com/frappe/frappe): Provides the database, authentication, permissions, realtime events, and APIs shared by Drive, Writer, Sheets, Slides, Meet, Mail, and Calendar.
 - [**Frappe UI**](https://github.com/frappe/frappe-ui): Power the interface and reusable components across every Suite product.
 - [**Yjs**](https://github.com/yjs/yjs): Keeps documents in Writer and spreadsheets in Sheets synchronized during realtime collaboration.

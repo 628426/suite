@@ -1,5 +1,5 @@
 import { createApp, defineComponent, h, nextTick } from 'vue'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const mocks = vi.hoisted(() => ({
   fileFetch: vi.fn(),
@@ -8,14 +8,16 @@ const mocks = vi.hoisted(() => ({
   setActiveEntity: vi.fn(),
   setCrumbEntity: vi.fn(),
   updateURLSlug: vi.fn(),
+  onFileSuccess: null as null | ((entity: Record<string, unknown>) => Promise<void>),
 }))
 
 vi.mock('frappe-ui', () => ({
   Button: defineComponent({ template: '<button />' }),
-  createResource: (options: { url: string }) =>
-    options.url.endsWith('track_visit')
-      ? { submit: mocks.trackVisit }
-      : { data: null, error: null, loading: false, fetch: mocks.fileFetch },
+  createResource: (options: { url: string; onSuccess?: typeof mocks.onFileSuccess }) => {
+    if (options.url.endsWith('track_visit')) return { submit: mocks.trackVisit }
+    mocks.onFileSuccess = options.onSuccess ?? null
+    return { data: null, error: null, loading: false, fetch: mocks.fileFetch }
+  },
 }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: mocks.routerPush }) }))
 vi.mock('@vueuse/core', () => ({ onKeyStroke: vi.fn() }))
@@ -63,6 +65,7 @@ function mountFile(entityName: string) {
 
 describe('Drive File page', () => {
   beforeEach(() => vi.clearAllMocks())
+  afterEach(() => vi.unstubAllGlobals())
 
   it('fetches the route entity on initial mount', async () => {
     const { app } = mountFile('file-a')
@@ -71,6 +74,18 @@ describe('Drive File page', () => {
     expect(mocks.fileFetch).toHaveBeenCalledOnce()
     expect(mocks.fileFetch).toHaveBeenCalledWith({ entity_name: 'file-a' })
     expect(mocks.routerPush).toHaveBeenCalledWith({ params: { entityName: 'file-a' } })
+    app.unmount()
+  })
+
+  it('opens Markdown stored as plain text in Writer with its Preview and Editor tabs', async () => {
+    const { app } = mountFile('readme')
+    await mocks.onFileSuccess!({
+      name: 'readme', file_name: 'README.md', file_type: 'Text', mime_type: 'text/plain',
+    })
+    expect(mocks.routerPush).toHaveBeenCalledWith({
+      name: 'writer-document',
+      params: { id: 'readme' },
+    })
     app.unmount()
   })
 })

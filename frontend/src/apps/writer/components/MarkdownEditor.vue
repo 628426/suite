@@ -1,58 +1,32 @@
 <script setup>
-import { provide, computed, ref, useTemplateRef } from 'vue'
-import {
-  Editor,
-  EditorFixedMenu,
-  EditorContent,
-  EditorTableMenu,
-  EditorDropZone,
-  RichTextKit,
-  articleToolbar,
-} from 'frappe-ui/editor'
-import { cssLineHeight } from '@/apps/writer/utils/typography'
+import MarkdownTabs from '@/components/MarkdownTabs.vue'
+import MarkdownPreview from '@/components/MarkdownPreview.vue'
+import { useTextFile } from '@/composables/useTextFile'
 
 const props = defineProps({
   document: Object,
-  settings: Object,
+  editable: Boolean,
 })
 
-const content = ref(props.document.doc.file_content)
-const editorEl = useTemplateRef('editorEl')
-const editor = computed(() => editorEl.value?.editor)
-provide('editor', editor)
-
-const extensions = [RichTextKit]
+const { source, loading, error } = useTextFile(() => props.document.doc.name)
 </script>
 
 <template>
-  <div class="flex flex-col w-full">
-    <EditorFixedMenu
-      v-if="editor"
-      :editor="editor"
-      :items="articleToolbar"
-      class="w-full max-w-[100vw] overflow-x-auto border-b border-outline-elevation-2 justify-start md:justify-center py-1.5 shrink-0"
-    />
-    <div class="overflow-y-auto">
-      <div
-        class="mx-auto cursor-text w-full flex justify-center h-full md:min-w-[48rem] md:max-w-[48rem] py-7"
-      >
-        <Editor ref="editorEl" v-model="content" :extensions>
-          <template #default="{ editor }">
-            <EditorTableMenu :editor />
-            <EditorDropZone :editor>
-              <EditorContent
-                class="prose-sm prose-v3"
-                :style="{
-                  fontFamily: `var(--font-${settings?.font_family})`,
-                  fontSize: `${settings?.font_size || 15}px`,
-                  lineHeight: cssLineHeight(settings?.line_height),
-                }"
-                :editor
-              />
-            </EditorDropZone>
-          </template>
-        </Editor>
-      </div>
-    </div>
-  </div>
+  <MarkdownTabs :key="document.doc.name">
+    <template #preview>
+      <p v-if="loading" role="status" class="p-7 text-ink-gray-6">Loading preview…</p>
+      <p v-else-if="error" role="alert" class="p-7 text-ink-red-4">{{ error }}</p>
+      <MarkdownPreview v-else :source class="mx-auto w-full max-w-3xl p-7" />
+    </template>
+    <template #editor>
+      <textarea
+        v-if="!loading && !error"
+        v-model="source"
+        aria-label="Raw Markdown"
+        :readonly="!editable"
+        spellcheck="false"
+        class="block min-h-[70vh] w-full resize-y bg-surface-base p-7 font-mono text-base text-ink-gray-9 focus:outline-none"
+      />
+    </template>
+  </MarkdownTabs>
 </template>

@@ -41,6 +41,7 @@
     </div>
   </div>
   <ErrorPage v-if="file.error" :error="file.error" />
+  <ErrorPage v-else-if="document?.error" :error="document.error" />
   <div v-else-if="!document?.doc" class="flex-1 overflow-y-auto flex justify-center">
     <div class="w-full md:min-w-[48rem] md:max-w-[48rem] px-5 pt-10 space-y-3">
       <Skeleton class="h-7 w-2/5 rounded-4" />
@@ -53,9 +54,9 @@
     </div>
   </div>
   <div v-else-if="document?.doc" class="flex w-full h-full overflow-hidden" v-show="!showVersions">
-    <NonCollabEditor v-if="!document.doc?.collab" ref="editorEl" v-model:versionPreview="versionPreview"
+    <MarkdownEditor v-if="isMarkdownFile(file.doc)" :key="file.doc.name" :document :editable />
+    <NonCollabEditor v-else-if="!document.doc?.collab" ref="editorEl" v-model:versionPreview="versionPreview"
       v-model:showSettings="showSettings" :file="file.doc" :document :settings :editable />
-    <MarkdownEditor v-else-if="file.doc?.mime_type == 'text/markdown'" :document :settings />
     <TextEditor v-else-if="document.doc?.settings" ref="editorEl" v-model:show-versions="showVersions"
       v-model:versionPreview="versionPreview" v-model:showSettings="showSettings" :file :document :editable :settings />
 
@@ -94,6 +95,7 @@ import LucideLock from '~icons/lucide/lock'
 import LucideLockOpen from '~icons/lucide/lock-open'
 import TextEditor from '@/apps/writer/components/TextEditor.vue'
 import NonCollabEditor from '@/apps/writer/components/NonCollabEditor.vue'
+import { isMarkdownFile } from '@/utils/markdown'
 const MarkdownEditor = defineAsyncComponent(
   () => import('@/apps/writer/components/MarkdownEditor.vue'),
 )
@@ -122,7 +124,7 @@ provide('isOffline', isOffline)
 const isOldSchema = computed(() => {
   if (!document.value?.doc) return false
   return (
-    !document.value?.doc.collab &&
+    !isMarkdownFile(file.doc) && !document.value?.doc.collab &&
     currentUserId.value !== document.value?.doc.owner
   )
 })
@@ -135,7 +137,7 @@ const editable = computed(() => {
   return !inIframe.value &&
     !!file.doc?.write &&
     !document.value?.doc?.settings?.lock &&
-    editor.value &&
+    (isMarkdownFile(file.doc) || editor.value) &&
     !isOldSchema.value
     ? true
     : false

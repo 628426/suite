@@ -5,6 +5,8 @@ import { defineConfig } from "vitest/config"
 
 export default defineConfig({
 	plugins: [vue()],
+	// Component tests exercise scoped CSS without loading the app's Tailwind preset.
+	css: { postcss: { plugins: [] } },
 	resolve: {
 		alias: {
 			"@": path.resolve(__dirname, "src"),

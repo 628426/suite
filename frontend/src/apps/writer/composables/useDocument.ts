@@ -3,6 +3,7 @@ import { useDoc, createResource } from 'frappe-ui'
 import { useSessionStore } from '@/boot/session'
 import { prettyData } from '@/apps/drive/sdk'
 import { getDocuments } from '@/apps/writer/resources/'
+import { isMarkdownFile } from '@/utils/markdown'
 
 const trackVisit = createResource({
   url: 'suite.drive.api.files.track_visit',
@@ -25,7 +26,8 @@ export default function useDocument(docId: MaybeRefOrGetter<string>) {
   // Construct a fake useDoc until we fetch data
   const document = ref({ doc: null })
   file.onSuccess((doc) => {
-    document.value = useDoc({
+    // Uploaded Markdown has no Writer Document. Its editor loads the original file bytes.
+    document.value = isMarkdownFile(doc) ? { doc } : useDoc({
       doctype: 'Writer Document',
       name: doc.content_docname,
       transform(doc) {
