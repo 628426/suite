@@ -279,17 +279,16 @@ const fetchPresentation = async (name) => {
 		// server content at baseModified and there is nothing to push
 		return { doc, content: restored, dirty: local.dirty || repaired }
 	}
-	if (local?.dirty) {
+	// the draft belongs to the tab that can write; this one neither rewrites nor reports it
+	if (local?.dirty && !inReadonlyMode.value) {
 		if (!landed) toast.warning('Changes that never reached the server were discarded.')
 		// left dirty, the same draft is found and discarded again on every load
-		if (!inReadonlyMode.value) {
-			await writeDraft({
-				...local,
-				dirty: false,
-				updatedAt: Date.now(),
-				baseModified: landed ? doc.modified : local.baseModified,
-			})
-		}
+		await writeDraft({
+			...local,
+			dirty: false,
+			updatedAt: Date.now(),
+			baseModified: landed ? doc.modified : local.baseModified,
+		})
 	}
 
 	// persist the repair

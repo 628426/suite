@@ -206,7 +206,8 @@ const initAutoSave = () => {
 }
 
 const handleBeforeUnload = (e) => {
-	if (dirty.value) {
+	// a tab that lost the lock has nothing left to save
+	if (dirty.value && !inReadonlyMode.value) {
 		e.preventDefault()
 		e.returnValue = ''
 	}

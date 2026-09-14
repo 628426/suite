@@ -42,6 +42,7 @@ vi.mock('@/apps/slides/stores/saving', () => ({
 	},
 }))
 
+const { lockedElsewhere } = await import('./editLock')
 const { initPresentationDoc, startLoad, presentationId, presentationDoc } =
 	await import('./presentation')
 
@@ -50,6 +51,7 @@ const slide = (background: string) => ({ clientId: 'c1', background, elements: [
 describe('loading a presentation', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
+		lockedElsewhere.value = false
 		slides.value = []
 		local = null
 		served = null
@@ -131,6 +133,18 @@ describe('loading a presentation', () => {
 		expect(markClean).toHaveBeenCalled()
 		expect(writeDraft).toHaveBeenCalledWith(expect.objectContaining({ dirty: false }))
 	})
+
+	it('leaves the draft and the discard notice to the tab that holds the lock', async () => {
+		lockedElsewhere.value = true
+		local = { dirty: true, baseModified: 'M1', content: [slide('#00ff00ff')] }
+		served = { modified: 'M2', slides: [slide('#ff0000ff')] }
+
+		await initPresentationDoc('p1')
+
+		expect(slides.value[0].background).toBe('#ff0000ff')
+		expect(warning).not.toHaveBeenCalled()
+		expect(writeDraft).not.toHaveBeenCalled()
+	})
 })
 
 describe('overlapping loads', () => {
@@ -138,6 +152,7 @@ describe('overlapping loads', () => {
 
 	beforeEach(() => {
 		vi.clearAllMocks()
+		lockedElsewhere.value = false
 		slides.value = []
 		local = null
 		served = null
