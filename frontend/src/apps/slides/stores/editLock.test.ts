@@ -94,6 +94,17 @@ describe('acquireEditLock', () => {
 		expect(await acquireEditLock('p1')).toBe(false)
 	})
 
+	it('counts the lock as held where Web Locks is missing', async () => {
+		Object.defineProperty(navigator, 'locks', { value: undefined, configurable: true })
+		vi.spyOn(console, 'warn').mockImplementation(() => {})
+
+		expect(await acquireEditLock('p1')).toBe(true)
+		expect(holdsEditLock('p1')).toBe(true)
+
+		releaseEditLock()
+		expect(holdsEditLock('p1')).toBe(false)
+	})
+
 	it('holds the lock only from the grant to the release', async () => {
 		// a copy loaded while the lock was elsewhere is stale once the lock arrives
 		const other = otherTab('p1')
