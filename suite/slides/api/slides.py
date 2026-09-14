@@ -51,12 +51,11 @@ def merge_rows(existing_rows, incoming):
         unknown = set(slide) - SLIDE_FIELDS
         if unknown:
             frappe.throw(_("Slide fields not accepted: {0}").format(", ".join(sorted(unknown))))
-        values = {field: slide[field] for field in SLIDE_FIELDS if field in slide}
-        row = by_client_id.pop(values.get("client_id"), None)
+        row = by_client_id.pop(slide.get("client_id"), None)
         if row:
-            row.update(values)
+            row.update(slide)
         else:
-            row = frappe.new_doc("Slide").update(values)
+            row = frappe.new_doc("Slide").update(slide)
         row.idx = idx
         rows.append(row)
     return rows

@@ -90,12 +90,14 @@ class TestSaveSlides(IntegrationTestCase):
         result = self.save([slide("a")])
         self.assertEqual(cstr(result["modified"]), self.modified())
 
-    def test_framework_fields_are_not_editable(self):
+    def test_unknown_fields_are_refused(self):
         self.save([slide("a")])
         (name,) = row_names(self.presentation)
 
         with self.assertRaises(frappe.ValidationError):
             self.save([{**slide("a"), "name": "forged", "parent": "other", "owner": OTHER_USER}])
+        with self.assertRaises(frappe.ValidationError):
+            self.save([{**slide("a"), "notes": "harmless"}])
 
         self.assertEqual(row_names(self.presentation), [name])
         self.assertEqual(frappe.db.get_value("Slide", name, "owner"), OWNER)
