@@ -285,9 +285,16 @@ const saveChanges = async () => {
 	await saveCurrentState()
 }
 
+// asked for by the user or the network coming back, so the backoff does not apply
+const saveWithoutDelay = () => {
+	retryAt = 0
+	return saveChanges()
+}
+
 export {
 	saveCurrentState,
 	saveChanges,
+	saveWithoutDelay,
 	saveDraft,
 	isSaving,
 	dirty,

@@ -33,7 +33,7 @@
 			</div>
 
 			<div
-				v-if="saveRefused"
+				v-if="saveRefused && !lockedElsewhere"
 				class="absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-4 bg-surface-elevation-1 p-0.5 shadow-md"
 			>
 				<div class="flex items-center gap-2 p-2">
@@ -43,7 +43,7 @@
 					</span>
 				</div>
 				<div class="h-5 w-px bg-surface-gray-4" />
-				<Button variant="ghost" @click="reloadPresentation">Reload</Button>
+				<Button variant="ghost" @click="reloadPresentation()">Reload</Button>
 			</div>
 
 			<PropertiesPanel v-if="!inReadonlyMode" class="absolute bottom-0 right-0 top-0" />
@@ -259,11 +259,13 @@ const loadEditorState = async () => {
 	const id = props.presentationId
 	if (!id) return
 	// re-entry from Home fires both the route and the props watcher; only the last load lands
-	const load = startLoad()
 	// read off the prop: the store flag follows one watcher later
 	const readonly = props.editorAccess == 'view'
 	// another tab may have saved while the lock was out of this tab's hands
 	const current = readonly || holdsEditLock(id)
+	// the copy on screen is behind then, and an edit made to it would go under the fresh one
+	if (!current) resetEditorState()
+	const load = startLoad()
 
 	if (!readonly) {
 		const held = await acquireEditLock(id, handleLockLost)
@@ -326,6 +328,14 @@ const handleLockLost = () => {
 	saveDraft()
 	clearInterval(autosaveInterval)
 }
+
+// an open text box would keep taking keystrokes the draft no longer sees
+watch(saveRefused, (refused) => {
+	if (!refused) return
+	flushPendingBlur()
+	resetFocus()
+	clearInterval(autosaveInterval)
+})
 
 const handleDeactivated = () => {
 	thumbnailCaptureRef.value?.reset()

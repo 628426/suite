@@ -25,8 +25,15 @@ vi.mock('@/apps/slides/utils/helpers', () => ({
 let sessionUser: string | null = 'me@example.com'
 vi.mock('@/boot/session', () => ({ getSessionUser: () => sessionUser }))
 
-const { saveCurrentState, markDirty, dirty, saveFailed, clearSaveFailure, getPresentationFromLocalDB } =
-	await import('./saving')
+const {
+	saveCurrentState,
+	saveWithoutDelay,
+	markDirty,
+	dirty,
+	saveFailed,
+	clearSaveFailure,
+	getPresentationFromLocalDB,
+} = await import('./saving')
 
 const conflict = () => Object.assign(new Error('stale'), { exc_type: 'TimestampMismatchError' })
 
@@ -346,6 +353,23 @@ describe('saveCurrentState', () => {
 		vi.advanceTimersByTime(500)
 		await saveCurrentState()
 		expect(pushes).toBe(3)
+	})
+
+	it('pushes on request without waiting out the backoff', async () => {
+		markDirty()
+
+		let pushes = 0
+		serverSave = async () => {
+			pushes++
+			throw new Error('500')
+		}
+
+		await saveCurrentState()
+		await saveCurrentState()
+		expect(pushes).toBe(1)
+
+		await saveWithoutDelay()
+		expect(pushes).toBe(2)
 	})
 })
 
