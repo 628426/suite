@@ -346,10 +346,17 @@ const rowKeys = (rows) => rows.map(rowKey).join('\n')
 const holdsOwnRows = (doc, rows) =>
 	doc.modified_by === getSessionUser() && rowKeys(doc.slides || []) === rowKeys(rows)
 
+// the push the client gave up on; the server may still take it in, and edits since build on it
+let lastFailedPush = null
+
 // the version a push left behind, or null if the server holds something else
 const landedVersion = async (id, rows) => {
 	const doc = await fetchDoc(id)
-	return holdsOwnRows(doc, rows) ? doc.modified : null
+	if (holdsOwnRows(doc, rows)) return doc.modified
+	if (lastFailedPush?.id !== id || !holdsOwnRows(doc, lastFailedPush.rows)) return null
+	// what is here now goes out again on the version that push made
+	if (presentationDoc.value?.name === id) presentationDoc.value.modified = doc.modified
+	return null
 }
 
 // a push that never answers would otherwise hold the save gate for good
@@ -382,11 +389,15 @@ const savePresentationDoc = async (id, updatedSlides, baseModified) => {
 	try {
 		modified = await pushSlides(id, rows, baseModified)
 	} catch (err) {
-		if (err?.exc_type !== 'TimestampMismatchError') throw err
+		if (err?.exc_type !== 'TimestampMismatchError') {
+			lastFailedPush = { id, rows }
+			throw err
+		}
 		// a push the client gave up on may have landed anyway
 		modified = await landedVersion(id, rows)
 		if (!modified) throw err
 	}
+	lastFailedPush = null
 
 	// the editor can move on mid-save; stamping then would mark another
 	// presentation with this save's version

@@ -86,6 +86,30 @@ describe('savePresentationDoc', () => {
 		expect(presentationDoc.value.modified).toBe('M2')
 	})
 
+	it('moves to the version a push it gave up on made', async () => {
+		presentationDoc.value = { name: 'p1', modified: 'M1' }
+		server.answer = () => {
+			throw new Error('network')
+		}
+		await expect(savePresentationDoc('p1', [slide], 'M1')).rejects.toThrow('network')
+
+		const edited = { ...slide, background: '#00ff00ff' }
+		server.answer = (options) => {
+			if (options.url === 'frappe.client.get') {
+				return { modified: 'M2', modified_by: 'me@example.com', slides: [row] }
+			}
+			throw stale()
+		}
+		try {
+			await expect(savePresentationDoc('p1', [edited], 'M1')).rejects.toMatchObject({
+				exc_type: 'TimestampMismatchError',
+			})
+		} finally {
+			server.answer = null
+		}
+		expect(presentationDoc.value.modified).toBe('M2')
+	})
+
 	it('stays refused when the server holds a different version', async () => {
 		presentationDoc.value = { name: 'p1', modified: 'M1' }
 		server.answer = (options) => {
