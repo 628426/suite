@@ -32,6 +32,20 @@
 				<Button variant="ghost" @click="takeOverEditing">Edit here</Button>
 			</div>
 
+			<div
+				v-if="saveRefused"
+				class="absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-4 bg-surface-elevation-1 p-0.5 shadow-md"
+			>
+				<div class="flex items-center gap-2 p-2">
+					<LucideCloudOff class="size-4 stroke-[1.5] text-ink-gray-7" />
+					<span class="text-base text-ink-gray-7">
+						Changed elsewhere. Reloading discards your unsaved edits.
+					</span>
+				</div>
+				<div class="h-5 w-px bg-surface-gray-4" />
+				<Button variant="ghost" @click="reloadPresentation">Reload</Button>
+			</div>
+
 			<PropertiesPanel v-if="!inReadonlyMode" class="absolute bottom-0 right-0 top-0" />
 		</div>
 	</div>
@@ -133,7 +147,7 @@ import {
 } from '@/apps/slides/stores/historyMeta'
 
 import { useShortcuts, showShortcutsModal } from '@/apps/slides/composables/useShortcuts'
-import { saveChanges, saveDraft, dirty } from '@/apps/slides/stores/saving'
+import { saveChanges, saveDraft, dirty, saveRefused } from '@/apps/slides/stores/saving'
 import {
 	refreshOfflineStatus,
 	warmOfflineCopyAssets,
@@ -269,17 +283,20 @@ const loadEditorState = async () => {
 	performAfterLoadOperations()
 }
 
-const takeOverEditing = async () => {
-	const id = props.presentationId
-	const load = startLoad()
-	await acquireEditLock(id, handleLockLost, { steal: true })
-	if (!isLatestLoad(load)) return
-
+// the server copy replaces what is on screen; the lock stays with this tab
+const reloadPresentation = async (load = startLoad()) => {
 	performBeforeLoadOperations()
-	const doc = await initPresentationDoc(id, false, load)
+	const doc = await initPresentationDoc(props.presentationId, false, load)
 	if (!doc) return
 	commandHistory.clearHistory()
 	performAfterLoadOperations()
+}
+
+const takeOverEditing = async () => {
+	const load = startLoad()
+	await acquireEditLock(props.presentationId, handleLockLost, { steal: true })
+	if (!isLatestLoad(load)) return
+	await reloadPresentation(load)
 }
 
 const handleMounted = () => {

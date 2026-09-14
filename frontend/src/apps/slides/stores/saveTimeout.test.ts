@@ -23,6 +23,7 @@ vi.mock('@/apps/slides/stores/saving', () => ({
 	markDirty: vi.fn(),
 	markClean: vi.fn(),
 	clearSaveFailure: vi.fn(),
+	saveRefused: ref(false),
 	getPresentationFromLocalDB: async () => null,
 }))
 

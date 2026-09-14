@@ -152,6 +152,7 @@ let retryAt = 0
 
 const clearSaveFailure = () => {
 	saveFailed.value = false
+	refusedBase.value = null
 	retryDelay = 0
 	retryAt = 0
 }
@@ -265,7 +266,11 @@ const saveCurrentState = async () => {
 		if (!saveFailed.value) console.error('Save failed: ', err)
 		saveFailed.value = true
 		if (err?.exc_type === 'TimestampMismatchError') {
-			if (presentationId.value === idAtSnapshot) refusedBase.value = snapshot.baseModified
+			if (presentationId.value !== idAtSnapshot) return
+			// the hold turns the editor read-only, so the edits made during the push go in first
+			const latest = takeSnapshot()
+			if (latest) await writeSnapshot(latest)
+			refusedBase.value = snapshot.baseModified
 		} else {
 			retryDelay = Math.min(retryDelay * 2 || 500, MAX_RETRY_MS)
 			retryAt = Date.now() + retryDelay

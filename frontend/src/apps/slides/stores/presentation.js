@@ -10,6 +10,7 @@ import {
 	markDirty,
 	writeDraft,
 	clearSaveFailure,
+	saveRefused,
 	getPresentationFromLocalDB,
 } from './saving'
 import { lockedElsewhere } from './editLock'
@@ -27,8 +28,11 @@ const presentationId = ref(null)
 // the user may not write this presentation at all
 const viewOnly = ref(false)
 
-// no write access, or another tab of this browser holds the edit lock
-const inReadonlyMode = computed(() => viewOnly.value || lockedElsewhere.value)
+// no write access, another tab of this browser holds the edit lock, or the server
+// refused this tab's version; a reload is the only way on from the last one
+const inReadonlyMode = computed(
+	() => viewOnly.value || lockedElsewhere.value || saveRefused.value,
+)
 
 const applyReverseTransition = ref(false)
 
@@ -304,7 +308,6 @@ const showPresentation = (id, { doc, content, dirty }) => {
 	presentationDoc.value = doc
 	slides.value = content
 	slidesLength.value = content.length
-	clearSaveFailure()
 	// a tab that may not write has nothing of its own to push
 	if (dirty && !inReadonlyMode.value) markDirty()
 	else markClean()
@@ -394,6 +397,8 @@ const savePresentationDoc = async (id, updatedSlides, baseModified) => {
 
 // returns the committed doc, or null if a later load took over
 const initPresentationDoc = async (id, readonly = false, load = startLoad()) => {
+	// a refused tab reloading in place writes again, so the load sees it as a writer
+	clearSaveFailure()
 	let loaded
 
 	if (readonly) {

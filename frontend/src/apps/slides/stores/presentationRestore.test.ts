@@ -6,6 +6,7 @@ const markDirty = vi.fn()
 const markClean = vi.fn()
 const writeDraft = vi.fn()
 const warning = vi.fn()
+const saveRefused = ref(false)
 let local: any = null
 let served: any = null
 let requests: any[] = []
@@ -35,7 +36,8 @@ vi.mock('@/apps/slides/stores/saving', () => ({
 	markDirty,
 	markClean,
 	writeDraft,
-	clearSaveFailure: vi.fn(),
+	clearSaveFailure: () => (saveRefused.value = false),
+	saveRefused,
 	getPresentationFromLocalDB: async () => {
 		if (local instanceof Error) throw local
 		return local
@@ -43,7 +45,7 @@ vi.mock('@/apps/slides/stores/saving', () => ({
 }))
 
 const { lockedElsewhere } = await import('./editLock')
-const { initPresentationDoc, startLoad, presentationId, presentationDoc } =
+const { initPresentationDoc, startLoad, presentationId, presentationDoc, inReadonlyMode } =
 	await import('./presentation')
 
 const slide = (background: string) => ({ clientId: 'c1', background, elements: [] })
@@ -52,6 +54,7 @@ describe('loading a presentation', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		lockedElsewhere.value = false
+		saveRefused.value = false
 		slides.value = []
 		local = null
 		served = null
@@ -134,6 +137,23 @@ describe('loading a presentation', () => {
 		expect(writeDraft).toHaveBeenCalledWith(expect.objectContaining({ dirty: false }))
 	})
 
+	it('stops editing once the server refused this version', async () => {
+		saveRefused.value = true
+		expect(inReadonlyMode.value).toBe(true)
+	})
+
+	it('lets a refused tab reload in place as a writer', async () => {
+		saveRefused.value = true
+		local = { dirty: true, baseModified: 'M1', content: [slide('#00ff00ff')] }
+		served = { modified: 'M2', slides: [slide('#ff0000ff')] }
+
+		await initPresentationDoc('p1')
+
+		expect(inReadonlyMode.value).toBe(false)
+		expect(warning).toHaveBeenCalled()
+		expect(writeDraft).toHaveBeenCalledWith(expect.objectContaining({ dirty: false }))
+	})
+
 	it('leaves the draft and the discard notice to the tab that holds the lock', async () => {
 		lockedElsewhere.value = true
 		local = { dirty: true, baseModified: 'M1', content: [slide('#00ff00ff')] }
@@ -153,6 +173,7 @@ describe('overlapping loads', () => {
 	beforeEach(() => {
 		vi.clearAllMocks()
 		lockedElsewhere.value = false
+		saveRefused.value = false
 		slides.value = []
 		local = null
 		served = null

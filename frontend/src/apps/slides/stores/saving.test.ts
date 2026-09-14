@@ -141,6 +141,22 @@ describe('saveCurrentState', () => {
 		expect(saveFailed.value).toBe(true)
 	})
 
+	it('drafts the edits made during a refused push before holding', async () => {
+		markDirty()
+
+		serverSave = async () => {
+			slides.value[0].background = '#00ff00ff'
+			markDirty()
+			throw conflict()
+		}
+
+		await saveCurrentState()
+
+		const local: any = await getPresentationFromLocalDB('p1')
+		expect(local.content[0].background).toBe('#00ff00ff')
+		expect(local.dirty).toBe(true)
+	})
+
 	it('stops pushing once the server refuses this tab as stale', async () => {
 		markDirty()
 
