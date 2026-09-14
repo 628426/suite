@@ -7,8 +7,7 @@ let heldId = null
 let releaseHeld = () => {}
 let requests = 0
 
-// one request at a time: the manager holds a grant from the moment it is made, so a
-// second request sent in the same tick finds the lock taken by this tab's own first one
+// one request at a time: a second one in the same tick would find this tab's own grant
 let lastRequest = Promise.resolve()
 
 const lockName = (id) => `presentation-${id}`
@@ -22,7 +21,10 @@ const releaseEditLock = () => {
 
 // resolves true once this tab may write; onLost fires if another tab takes the lock over
 const acquireEditLock = (id, onLost, { steal = false } = {}) => {
-	if (!navigator.locks) return Promise.resolve(true)
+	if (!navigator.locks) {
+		console.warn('Web Locks unavailable: another tab may edit this presentation too')
+		return Promise.resolve(true)
+	}
 	if (heldId === id) return Promise.resolve(true)
 	releaseEditLock()
 	const request = requests
@@ -45,10 +47,11 @@ const acquireEditLock = (id, onLost, { steal = false } = {}) => {
 				}),
 			)
 			.catch(() => {
+				if (request !== requests) return resolve(false)
+				// refused before any grant: edit without the lock
+				if (heldId !== id) return resolve(true)
 				// a granted lock only rejects when another tab steals it
-				if (request !== requests || heldId !== id) return
 				heldId = null
-				// the editor writes its last edits to the draft first, while it may still write
 				onLost?.()
 				lockedElsewhere.value = true
 			})

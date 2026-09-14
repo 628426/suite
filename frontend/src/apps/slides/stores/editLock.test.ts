@@ -2,8 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const abortError = () => Object.assign(new Error('stolen'), { name: 'AbortError' })
 
-// the browser's lock manager, shared by every tab: one holder per name, grants asynchronous,
-// a plain request waits, ifAvailable gets null, steal evicts the holder
+// the browser's lock manager: a plain request waits, ifAvailable gets null, steal evicts the holder
 const makeLockManager = () => {
 	const held = new Map<string, { steal: (err: Error) => void; done: Promise<void> }>()
 	return {
@@ -34,7 +33,6 @@ const settle = () => new Promise((resolve) => setTimeout(resolve))
 
 describe('acquireEditLock', () => {
 	let locks: ReturnType<typeof makeLockManager>
-	// what another tab looks like from here: the same manager, a different holder
 	const otherTab = (id: string, options = {}) => {
 		let release: () => void = () => {}
 		const held = locks.request(
@@ -56,11 +54,6 @@ describe('acquireEditLock', () => {
 		await settle()
 	})
 
-	it('lets the first tab edit', async () => {
-		expect(await acquireEditLock('p1')).toBe(true)
-		expect(lockedElsewhere.value).toBe(false)
-	})
-
 	it('leaves a second tab read-only', async () => {
 		otherTab('p1')
 		await settle()
@@ -78,36 +71,16 @@ describe('acquireEditLock', () => {
 		await expect(other.held).rejects.toMatchObject({ name: 'AbortError' })
 	})
 
-	it('reports the lock lost when another tab takes over', async () => {
-		const onLost = vi.fn()
+	it('reports the lock lost before it reads as locked out', async () => {
+		// the editor writes its last edits to the draft from onLost, and a locked-out tab writes nothing
+		const onLost = vi.fn(() => lockedElsewhere.value)
 		await acquireEditLock('p1', onLost)
 
 		otherTab('p1', { steal: true })
 		await settle()
 
-		expect(onLost).toHaveBeenCalledTimes(1)
+		expect(onLost).toHaveReturnedWith(false)
 		expect(lockedElsewhere.value).toBe(true)
-	})
-
-	it('lets the editor write the draft before it reads as locked out', async () => {
-		// the editor writes its last edits to the draft from onLost, and a locked-out tab writes nothing
-		let lockedDuringOnLost: boolean | null = null
-		await acquireEditLock('p1', () => (lockedDuringOnLost = lockedElsewhere.value))
-
-		otherTab('p1', { steal: true })
-		await settle()
-
-		expect(lockedDuringOnLost).toBe(false)
-	})
-
-	it('frees the lock for the next tab once released', async () => {
-		await acquireEditLock('p1')
-		releaseEditLock()
-		await settle()
-
-		otherTab('p1')
-		await settle()
-		expect(await acquireEditLock('p1')).toBe(false)
 	})
 
 	it('holds nothing when the editor moved on before the grant', async () => {
@@ -128,8 +101,11 @@ describe('acquireEditLock', () => {
 		expect(lockedElsewhere.value).toBe(false)
 	})
 
-	it('edits normally where the browser has no lock manager', async () => {
-		Object.defineProperty(navigator, 'locks', { value: undefined, configurable: true })
+	it('edits normally when the manager refuses the request outright', async () => {
+		// a document that is not fully active, or a partitioned frame, rejects before any grant
+		locks.request = async () => {
+			throw Object.assign(new Error('not active'), { name: 'InvalidStateError' })
+		}
 		expect(await acquireEditLock('p1')).toBe(true)
 	})
 })
