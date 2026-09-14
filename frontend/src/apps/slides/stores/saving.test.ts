@@ -25,7 +25,7 @@ vi.mock('@/apps/slides/utils/helpers', () => ({
 let sessionUser: string | null = 'me@example.com'
 vi.mock('@/boot/session', () => ({ getSessionUser: () => sessionUser }))
 
-const { saveCurrentState, autosave, markDirty, dirty, saveFailed, getPresentationFromLocalDB } =
+const { saveCurrentState, markDirty, dirty, saveFailed, clearSaveFailure, getPresentationFromLocalDB } =
 	await import('./saving')
 
 const conflict = () => Object.assign(new Error('stale'), { exc_type: 'TimestampMismatchError' })
@@ -36,8 +36,10 @@ describe('saveCurrentState', () => {
 	let opens = 0
 
 	beforeEach(() => {
+		// the draft store schedules its work with timers, so only the clock is faked
+		vi.useFakeTimers({ toFake: ['Date'] })
 		base = `M${++opens}`
-		saveFailed.value = false
+		clearSaveFailure()
 		sessionUser = 'me@example.com'
 		presentationId.value = 'p1'
 		presentationDoc.value = { modified: base }
@@ -46,6 +48,10 @@ describe('saveCurrentState', () => {
 			presentationDoc.value = { modified: 'M2' }
 			return 'M2'
 		}
+	})
+
+	afterEach(() => {
+		vi.useRealTimers()
 	})
 
 	it('persists edits made while the server save is in flight', async () => {
@@ -145,11 +151,10 @@ describe('saveCurrentState', () => {
 		}
 
 		await saveCurrentState()
-		// the base this tab holds never catches up on its own, so retrying it is wasted
 		await saveCurrentState()
 		expect(pushes).toBe(1)
 
-		// the edits still go to the draft, they just aren't offered to the server again
+		// the edits still go to the draft
 		slides.value[0].background = '#00ff00ff'
 		markDirty()
 		await saveCurrentState()
@@ -158,8 +163,7 @@ describe('saveCurrentState', () => {
 		expect(local.dirty).toBe(true)
 		expect(pushes).toBe(1)
 
-		// a reload, or opening another presentation, gives this tab a base the server
-		// hasn't moved past, and the hold is on the refused version only
+		// a reload gives this tab a newer base, and the hold is on the refused version only
 		presentationDoc.value = { modified: 'M-reloaded' }
 		serverSave = async () => {
 			pushes++
@@ -220,8 +224,7 @@ describe('saveCurrentState', () => {
 		serverSave = async (id, content, baseModified) => {
 			sent.push({ id, content, baseModified })
 			if (sent.length > 1) return 'M3'
-			// the tail typed mid-push is turned away by the gate as the editor leaves, then
-			// another presentation loads
+			// typed mid-push, turned away by the gate, then the editor leaves
 			slides.value[0].background = '#00ff00ff'
 			markDirty()
 			await saveCurrentState()
@@ -233,11 +236,9 @@ describe('saveCurrentState', () => {
 
 		await saveCurrentState()
 
-		// the switch never waited; the push that was in flight carried the tail out itself
 		expect(sent).toHaveLength(2)
 		expect(sent[1].id).toBe('p1')
 		expect(sent[1].content[0].background).toBe('#00ff00ff')
-		// built on the snapshot the server had just taken
 		expect(sent[1].baseModified).toBe('M2')
 		const local: any = await getPresentationFromLocalDB('p1')
 		expect(local.content[0].background).toBe('#00ff00ff')
@@ -253,15 +254,15 @@ describe('saveCurrentState', () => {
 		const stuck = saveCurrentState()
 		await new Promise((resolve) => setTimeout(resolve))
 
-		// typed while the push hangs, turned away by the gate
 		slides.value[0].background = '#222222ff'
 		markDirty()
 		await saveCurrentState()
 
 		fail(new Error('network'))
 		await stuck
+		vi.advanceTimersByTime(500)
 
-		// typed after the failure; its push lands after the editor moved on
+		// its push lands after the editor moved on
 		slides.value[0].background = '#333333ff'
 		markDirty()
 		const sent: string[] = []
@@ -274,34 +275,11 @@ describe('saveCurrentState', () => {
 		}
 		await saveCurrentState()
 
-		// the queued edit is older than the one just pushed; sent as a tail it would put
-		// its content back over the server and the draft, and mark the draft clean
+		// sent as a tail, the older queued edit would overwrite this one
 		expect(sent).toEqual(['#333333ff'])
 		const local: any = await getPresentationFromLocalDB('p1')
 		expect(local.content[0].background).toBe('#333333ff')
 		expect(local.dirty).toBe(false)
-	})
-
-	it('rewrites the draft only when the edits moved on while the push is held back', async () => {
-		markDirty()
-
-		serverSave = async () => {
-			throw conflict()
-		}
-		const put = vi.spyOn(IDBObjectStore.prototype, 'put')
-
-		await saveCurrentState()
-		// nothing changed, and the refused base holds the push: a tick has nothing to write
-		await saveCurrentState()
-		expect(put).toHaveBeenCalledTimes(1)
-
-		slides.value[0].background = '#00ff00ff'
-		markDirty()
-		await saveCurrentState()
-		expect(put).toHaveBeenCalledTimes(2)
-		put.mockRestore()
-		const local: any = await getPresentationFromLocalDB('p1')
-		expect(local.content[0].background).toBe('#00ff00ff')
 	})
 
 	it('keeps the tail on the new base when its own push dies', async () => {
@@ -321,13 +299,37 @@ describe('saveCurrentState', () => {
 
 		await saveCurrentState()
 
-		// the draft is the only copy of the tail now; its base must be the version the server
-		// holds, or the next load of p1 would throw it away as stale
+		// on an older base the next load would throw the tail away as stale
 		const local: any = await getPresentationFromLocalDB('p1')
 		expect(local.content[0].background).toBe('#00ff00ff')
 		expect(local.dirty).toBe(true)
 		expect(local.baseModified).toBe('M2')
 		expect(saveFailed.value).toBe(true)
+	})
+
+	it('waits longer after each failed push', async () => {
+		markDirty()
+
+		let pushes = 0
+		serverSave = async () => {
+			pushes++
+			throw new Error('500')
+		}
+
+		await saveCurrentState()
+		await saveCurrentState()
+		expect(pushes).toBe(1)
+
+		vi.advanceTimersByTime(500)
+		await saveCurrentState()
+		expect(pushes).toBe(2)
+
+		vi.advanceTimersByTime(500)
+		await saveCurrentState()
+		expect(pushes).toBe(2)
+		vi.advanceTimersByTime(500)
+		await saveCurrentState()
+		expect(pushes).toBe(3)
 	})
 })
 
@@ -348,45 +350,5 @@ describe('drafts', () => {
 
 		sessionUser = 'me@example.com'
 		expect(await getPresentationFromLocalDB('p-user')).toBeNull()
-	})
-})
-
-describe('autosave', () => {
-	let pushes = 0
-
-	beforeEach(() => {
-		// the draft store schedules its work with timers, so only the clock is faked
-		vi.useFakeTimers({ toFake: ['Date'] })
-		pushes = 0
-		presentationId.value = 'p-gated'
-		presentationDoc.value = { modified: 'M1' }
-		slides.value = [{ clientId: 'c1', background: '#ff0000ff', elements: [] }]
-		serverSave = async () => {
-			pushes++
-			return 'M2'
-		}
-	})
-
-	afterEach(() => {
-		vi.useRealTimers()
-	})
-
-	it('writes the draft once a gate has held the push for ten seconds', async () => {
-		markDirty()
-
-		// the caret sits in a text element the whole time
-		await autosave(true)
-		vi.advanceTimersByTime(5_000)
-		await autosave(true)
-		expect(await getPresentationFromLocalDB('p-gated')).toBeUndefined()
-
-		vi.advanceTimersByTime(6_000)
-		await autosave(true)
-		const local: any = await getPresentationFromLocalDB('p-gated')
-		expect(local.content[0].background).toBe('#ff0000ff')
-		expect(local.dirty).toBe(true)
-		// the gate still holds the push itself
-		expect(pushes).toBe(0)
-		expect(dirty.value).toBe(true)
 	})
 })

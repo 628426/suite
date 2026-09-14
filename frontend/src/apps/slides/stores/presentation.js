@@ -5,17 +5,24 @@ import tinycolor from 'tinycolor2'
 
 import { router } from '@/apps/slides/router'
 import { slides } from './slide'
-import { markClean, markDirty, writeDraft, getPresentationFromLocalDB } from './saving'
+import {
+	markClean,
+	markDirty,
+	writeDraft,
+	clearSaveFailure,
+	getPresentationFromLocalDB,
+} from './saving'
 import { lockedElsewhere } from './editLock'
 import { normalizeZIndices } from '@/apps/slides/stores/element'
 import { normalizeColor } from '@/apps/slides/utils/color'
 import { appDocumentTitle } from '@/utils/documentTitle'
+import { getSessionUser } from '@/boot/session'
 import { v4 as uuid4 } from 'uuid'
 import { commandHistory } from './historyMeta'
 
 const presentationDoc = ref()
 
-const presentationId = ref('')
+const presentationId = ref(null)
 
 // the user may not write this presentation at all
 const viewOnly = ref(false)
@@ -64,8 +71,7 @@ const updatePresentationTitle = async (id, newTitle) => {
 	return response.slug
 }
 
-// adopting a stamp over a stale base would let the next save wipe rows saved elsewhere;
-// left stale, that save is refused and the tab told to reload, like any other conflict
+// adopting a stamp over a stale base would let the next save wipe rows saved elsewhere
 const adoptServerVersion = (id, { modified, base_modified }) => {
 	if (presentationDoc.value?.name !== id) return
 	if (presentationDoc.value.modified === base_modified) presentationDoc.value.modified = modified
@@ -237,15 +243,20 @@ const startLoad = () => ++latestLoad
 
 const isLatestLoad = (load) => load === latestLoad
 
-// touches no editor state, so a save during the load still targets what is on screen
-const fetchPresentation = async (name) => {
-	// the service worker intercepts GETs only, and an offline copy warms exactly this
-	// url with this param order (utils/pinTargets.ts), so both have to stay in step
-	const doc = await frappeRequest({
+// an offline copy warms exactly this url and param order (utils/pinTargets.ts)
+const fetchDoc = (name) =>
+	frappeRequest({
 		url: 'frappe.client.get',
 		method: 'GET',
 		params: { doctype: 'Presentation', name },
 	})
+
+// touches no editor state, so a save during the load still targets what is on screen
+const fetchPresentation = async (name) => {
+	const doc = await fetchDoc(name)
+	const local = await getPresentationFromLocalDB(name).catch(() => null)
+	// the push this draft waited on landed after all
+	const landed = local?.dirty && holdsOwnRows(doc, local.content.map(toSlideRow))
 
 	const clientIdsRepaired = normalizeSlideDoc(doc)
 	for (const slide of doc.slides || []) {
@@ -254,7 +265,6 @@ const fetchPresentation = async (name) => {
 
 	// the worker may replay a document older than the last save; the copy that
 	// save left behind is then the truth, and unsynced edits ride along in it
-	const local = await getPresentationFromLocalDB(name)
 	const servedIsStale = local?.baseModified > doc.modified
 	if (servedIsStale || (local?.dirty && local.baseModified === doc.modified)) {
 		if (servedIsStale) doc.modified = local.baseModified
@@ -270,9 +280,16 @@ const fetchPresentation = async (name) => {
 		return { doc, content: restored, dirty: local.dirty || repaired }
 	}
 	if (local?.dirty) {
-		toast.warning('Changes that never reached the server were discarded.')
+		if (!landed) toast.warning('Changes that never reached the server were discarded.')
 		// left dirty, the same draft is found and discarded again on every load
-		if (!inReadonlyMode.value) await writeDraft({ ...local, dirty: false, updatedAt: Date.now() })
+		if (!inReadonlyMode.value) {
+			await writeDraft({
+				...local,
+				dirty: false,
+				updatedAt: Date.now(),
+				baseModified: landed ? doc.modified : local.baseModified,
+			})
+		}
 	}
 
 	// persist the repair
@@ -288,6 +305,7 @@ const showPresentation = (id, { doc, content, dirty }) => {
 	presentationDoc.value = doc
 	slides.value = content
 	slidesLength.value = content.length
+	clearSaveFailure()
 	// a tab that may not write has nothing of its own to push
 	if (dirty && !inReadonlyMode.value) markDirty()
 	else markClean()
@@ -309,22 +327,43 @@ const toSlideRow = (slide) => ({
 	fade_unmatched_elements: slide.fadeUnmatchedElements,
 })
 
+// what a push sends, as the server stores and returns it: Data comes back as strings, Check as 0/1
+const rowKey = (row) =>
+	JSON.stringify([
+		row.client_id,
+		row.background,
+		row.elements,
+		row.transition || null,
+		String(row.transition_duration ?? ''),
+		Number(row.fade_unmatched_elements ?? 0),
+	])
+
+const rowKeys = (rows) => rows.map(rowKey).join('\n')
+
+// true when this user's push put exactly these rows on the server
+const holdsOwnRows = (doc, rows) =>
+	doc.modified_by === getSessionUser() && rowKeys(doc.slides || []) === rowKeys(rows)
+
+// the version a push left behind, or null if the server holds something else
+const landedVersion = async (id, rows) => {
+	const doc = await fetchDoc(id)
+	return holdsOwnRows(doc, rows) ? doc.modified : null
+}
+
 // a push that never answers would otherwise hold the save gate for good
 const SAVE_TIMEOUT_MS = 30_000
 
-const savePresentationDoc = async (id, updatedSlides, baseModified) => {
+const pushSlides = async (id, rows, baseModified) => {
 	const controller = new AbortController()
 	const timer = setTimeout(() => controller.abort(), SAVE_TIMEOUT_MS)
 	let response
 	try {
-		// the base is the version this content was built on, carried by the snapshot: reading
-		// it live would let content written against an older doc pass the server's check
 		response = await frappeRequest({
 			url: 'suite.slides.api.slides.save_slides',
 			method: 'POST',
 			params: {
 				name: id,
-				slides: updatedSlides.map(toSlideRow),
+				slides: rows,
 				base_modified: baseModified,
 			},
 			signal: controller.signal,
@@ -332,7 +371,20 @@ const savePresentationDoc = async (id, updatedSlides, baseModified) => {
 	} finally {
 		clearTimeout(timer)
 	}
-	const { modified } = response
+	return response.modified
+}
+
+const savePresentationDoc = async (id, updatedSlides, baseModified) => {
+	const rows = updatedSlides.map(toSlideRow)
+	let modified
+	try {
+		modified = await pushSlides(id, rows, baseModified)
+	} catch (err) {
+		if (err?.exc_type !== 'TimestampMismatchError') throw err
+		// a push the client gave up on may have landed anyway
+		modified = await landedVersion(id, rows)
+		if (!modified) throw err
+	}
 
 	// the editor can move on mid-save; stamping then would mark another
 	// presentation with this save's version
@@ -431,6 +483,7 @@ const resetEditorState = () => {
 	slidesLength.value = 0
 	commandHistory.clearHistory()
 	markClean()
+	clearSaveFailure()
 	// a push landing now would otherwise read the blank slides back as this presentation's edit
 	presentationId.value = null
 }

@@ -9,7 +9,6 @@ const warning = vi.fn()
 let local: any = null
 let served: any = null
 let requests: any[] = []
-// per-name documents and gates, for loads that overlap
 const docs = new Map<string, any>()
 const holds = new Map<string, Promise<void>>()
 
@@ -31,11 +30,16 @@ vi.mock('@/apps/slides/router', () => ({ router: { currentRoute: { value: { quer
 vi.mock('@/apps/slides/stores/slide', () => ({ slides }))
 vi.mock('@/apps/slides/stores/historyMeta', () => ({ commandHistory: {} }))
 vi.mock('@/apps/slides/stores/element', () => ({ normalizeZIndices: (els: any) => els }))
+vi.mock('@/boot/session', () => ({ getSessionUser: () => 'me@example.com' }))
 vi.mock('@/apps/slides/stores/saving', () => ({
 	markDirty,
 	markClean,
 	writeDraft,
-	getPresentationFromLocalDB: async () => local,
+	clearSaveFailure: vi.fn(),
+	getPresentationFromLocalDB: async () => {
+		if (local instanceof Error) throw local
+		return local
+	},
 }))
 
 const { initPresentationDoc, startLoad, presentationId, presentationDoc } =
@@ -91,6 +95,31 @@ describe('loading a presentation', () => {
 		expect(warning).not.toHaveBeenCalled()
 	})
 
+	it('loads the server copy when the draft store cannot be opened', async () => {
+		local = new Error('quota exceeded')
+		served = { modified: 'M1', slides: [slide('#ff0000ff')] }
+
+		await initPresentationDoc('p1')
+
+		expect(slides.value[0].background).toBe('#ff0000ff')
+	})
+
+	it('keeps quiet when the version past the draft is the push it waited on', async () => {
+		local = { dirty: true, baseModified: 'M1', content: [slide('#00ff00ff')] }
+		served = {
+			modified: 'M2',
+			modified_by: 'me@example.com',
+			slides: [{ client_id: 'c1', background: '#00ff00ff', elements: '[]' }],
+		}
+
+		await initPresentationDoc('p1')
+
+		expect(slides.value[0].background).toBe('#00ff00ff')
+		expect(warning).not.toHaveBeenCalled()
+		expect(markClean).toHaveBeenCalled()
+		expect(writeDraft).toHaveBeenCalledWith(expect.objectContaining({ dirty: false, baseModified: 'M2' }))
+	})
+
 	it('discards unsynced edits once the server has moved past them', async () => {
 		local = { dirty: true, baseModified: 'M1', content: [slide('#00ff00ff')] }
 		served = { modified: 'M2', slides: [slide('#ff0000ff')] }
@@ -100,7 +129,6 @@ describe('loading a presentation', () => {
 		expect(slides.value[0].background).toBe('#ff0000ff')
 		expect(warning).toHaveBeenCalled()
 		expect(markClean).toHaveBeenCalled()
-		// or the next load finds the same draft and discards it again
 		expect(writeDraft).toHaveBeenCalledWith(expect.objectContaining({ dirty: false }))
 	})
 })

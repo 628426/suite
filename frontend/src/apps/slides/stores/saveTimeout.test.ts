@@ -6,10 +6,9 @@ const server = vi.hoisted(() => ({ answer: null as ((options: any) => any) | nul
 vi.mock('frappe-ui', () => ({
 	createResource: () => ({}),
 	call: vi.fn(),
-	// a push that never answers, unless its signal aborts it
 	frappeRequest: (options: any) =>
 		server.answer
-			? Promise.resolve(server.answer(options))
+			? Promise.resolve().then(() => server.answer!(options))
 			: new Promise((_, reject) => {
 					options.signal?.addEventListener('abort', () => reject(options.signal.reason))
 				}),
@@ -19,9 +18,11 @@ vi.mock('@/apps/slides/router', () => ({ router: { currentRoute: { value: { quer
 vi.mock('@/apps/slides/stores/slide', () => ({ slides: ref([]) }))
 vi.mock('@/apps/slides/stores/historyMeta', () => ({ commandHistory: { clearHistory: vi.fn() } }))
 vi.mock('@/apps/slides/stores/element', () => ({ normalizeZIndices: (els: any) => els }))
+vi.mock('@/boot/session', () => ({ getSessionUser: () => 'me@example.com' }))
 vi.mock('@/apps/slides/stores/saving', () => ({
 	markDirty: vi.fn(),
 	markClean: vi.fn(),
+	clearSaveFailure: vi.fn(),
 	getPresentationFromLocalDB: async () => null,
 }))
 
@@ -41,13 +42,11 @@ describe('savePresentationDoc', () => {
 		)
 		await vi.advanceTimersByTimeAsync(30_000)
 
-		// the save gate reopens on the rejection; a hung request would hold it forever
 		expect(await outcome).toBe('AbortError')
 	})
 
 	it('stamps the presentation it pushed, not the one on screen', async () => {
 		server.answer = (options) => ({ modified: `${options.params.name}-M2` })
-		// the editor moved on before this push went out
 		presentationDoc.value = { name: 'p2', modified: 'N1' }
 
 		try {
@@ -57,6 +56,53 @@ describe('savePresentationDoc', () => {
 		}
 		expect(presentationDoc.value.modified).toBe('N1')
 	})
+
+	const stale = () => Object.assign(new Error('stale'), { exc_type: 'TimestampMismatchError' })
+	const slide = { clientId: 'c1', background: '#ff0000ff', elements: [], fadeUnmatchedElements: true }
+	const row = {
+		client_id: 'c1',
+		background: '#ff0000ff',
+		elements: '[]',
+		transition: null,
+		transition_duration: null,
+		fade_unmatched_elements: 1,
+	}
+
+	it('adopts the version a push left when the retry finds its own rows there', async () => {
+		presentationDoc.value = { name: 'p1', modified: 'M1' }
+		server.answer = (options) => {
+			if (options.url === 'frappe.client.get') {
+				return { modified: 'M2', modified_by: 'me@example.com', slides: [row] }
+			}
+			throw stale()
+		}
+
+		try {
+			expect(await savePresentationDoc('p1', [slide], 'M1')).toBe('M2')
+		} finally {
+			server.answer = null
+		}
+		expect(presentationDoc.value.modified).toBe('M2')
+	})
+
+	it('stays refused when the server holds a different version', async () => {
+		presentationDoc.value = { name: 'p1', modified: 'M1' }
+		server.answer = (options) => {
+			if (options.url === 'frappe.client.get') {
+				return { modified: 'M2', modified_by: 'me@example.com', slides: [{ ...row, background: '#00ff00ff' }] }
+			}
+			throw stale()
+		}
+
+		try {
+			await expect(savePresentationDoc('p1', [slide], 'M1')).rejects.toMatchObject({
+				exc_type: 'TimestampMismatchError',
+			})
+		} finally {
+			server.answer = null
+		}
+		expect(presentationDoc.value.modified).toBe('M1')
+	})
 })
 
 describe('resetEditorState', () => {
@@ -65,7 +111,6 @@ describe('resetEditorState', () => {
 
 		resetEditorState()
 
-		// the blank slides would otherwise be read back as p1's latest edit
 		expect(presentationId.value).toBe(null)
 	})
 })

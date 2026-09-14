@@ -118,7 +118,7 @@ import {
 	addEmptySlide,
 	handleInsertSlide,
 } from '@/apps/slides/stores/slide'
-import { resetFocus, flushPendingBlur, focusElementId } from '@/apps/slides/stores/element'
+import { resetFocus, flushPendingBlur } from '@/apps/slides/stores/element'
 import { lockedElsewhere, acquireEditLock, releaseEditLock } from '@/apps/slides/stores/editLock'
 import {
 	commandHistory,
@@ -128,7 +128,7 @@ import {
 } from '@/apps/slides/stores/historyMeta'
 
 import { useShortcuts, showShortcutsModal } from '@/apps/slides/composables/useShortcuts'
-import { saveChanges, saveDraft, autosave, dirty } from '@/apps/slides/stores/saving'
+import { saveChanges, saveDraft, dirty } from '@/apps/slides/stores/saving'
 import {
 	refreshOfflineStatus,
 	warmOfflineCopyAssets,
@@ -181,8 +181,9 @@ usePageMeta(() => {
 
 onActivated(() => (document.title = pageTitle()))
 
+// a drag in progress would push every intermediate position
 const handleAutoSave = () => {
-	autosave(isSlideInteractionActive.value || focusElementId.value != null)
+	if (!isSlideInteractionActive.value) saveChanges()
 }
 
 const updateRoute = async (slug) => {
@@ -245,7 +246,7 @@ const loadEditorState = async () => {
 	if (!readonly) {
 		const held = await acquireEditLock(id, handleLockLost)
 		if (!isLatestLoad(load)) return
-		// refused with no other tab holding it: the editor left while the request was pending
+		// refused with no other holder: the editor left while the request was pending
 		if (!held && !lockedElsewhere.value) return
 	}
 
@@ -255,9 +256,7 @@ const loadEditorState = async () => {
 		return
 	}
 
-	// a tab locked out of editing still has read access to the full document
 	const doc = await initPresentationDoc(id, readonly, load)
-	// a later load took the editor over
 	if (!doc) return
 	performAfterLoadOperations()
 }
@@ -269,7 +268,6 @@ const takeOverEditing = async () => {
 	if (!isLatestLoad(load)) return
 
 	performBeforeLoadOperations()
-	// the tab that held the lock has saved since this one loaded
 	const doc = await initPresentationDoc(id, false, load)
 	if (!doc) return
 	commandHistory.clearHistory()
@@ -308,7 +306,9 @@ const handleDeactivated = () => {
 	thumbnailCaptureRef.value?.reset()
 	clearInterval(autosaveInterval)
 
-	if (router.currentRoute.value.name !== 'slides-slideshow') leavePresentation()
+	// the slideshow keeps the editor and its lock, so the edits go out before it starts
+	if (router.currentRoute.value.name === 'slides-slideshow') saveChanges()
+	else leavePresentation()
 }
 
 const handleBeforeUnmount = () => {
@@ -356,7 +356,6 @@ watch(
 	() => props.presentationId,
 	(id, prevId) => {
 		if (!id || !prevId || id === prevId) return
-		// before the mode flips: a switch into a view-only presentation still has edits to flush
 		leavePresentation()
 		thumbnailCaptureRef.value?.reset()
 		commandHistory.clearHistory()

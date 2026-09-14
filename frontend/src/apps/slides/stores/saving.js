@@ -71,8 +71,7 @@ const savePresentationToLocalDB = async (data) => {
 
 let persistRequested = false
 
-// the draft is a copy of what the editor holds; a store that refuses it must not
-// stop the push, which is what gets the edits somewhere durable
+// a store that refuses the draft must not stop the push
 const writeDraft = (record) => {
 	if (!persistRequested) {
 		persistRequested = true
@@ -96,7 +95,7 @@ const getPresentationFromLocalDB = async (id) => {
 
 		req.onsuccess = () => {
 			const record = req.result
-			// stamped by whoever wrote it; a record another user of this browser left is not ours
+			// a record another user of this browser left is not ours
 			if (record?.user && record.user !== getSessionUser()) return resolve(null)
 			resolve(record)
 		}
@@ -112,8 +111,7 @@ const dirty = ref(false)
 
 const isSaving = ref(false)
 
-// what the gate turned away, per presentation: a push that lands after the editor
-// left takes over from here, since nothing else will push that presentation again
+// edits the gate turned away; a push landing after the editor left carries them out
 const queuedSnapshots = new Map()
 
 // bumped on every markDirty so a save can tell if edits arrived while it was in flight;
@@ -132,8 +130,7 @@ const markClean = () => {
 	dirty.value = false
 }
 
-// the generation each presentation's draft holds; a blocked push would otherwise
-// rewrite the whole presentation on every tick
+// the generation each draft holds, so a blocked push does not rewrite it every tick
 const draftGenerations = new Map()
 
 const writeSnapshot = async (snapshot) => {
@@ -145,9 +142,19 @@ const writeSnapshot = async (snapshot) => {
 // true when an online save to the server failed; drives the "Not saved" indicator
 const saveFailed = ref(false)
 
-// the base version the server refused: pushing it again fails the same way however long
-// we wait, so it is held until a reload or another presentation gives this tab a newer one
+// the base the server refused; pushing it again fails the same way until a reload
 const refusedBase = ref(null)
+
+// a server that keeps turning the push away is asked again later, not on every tick
+const MAX_RETRY_MS = 30_000
+let retryDelay = 0
+let retryAt = 0
+
+const clearSaveFailure = () => {
+	saveFailed.value = false
+	retryDelay = 0
+	retryAt = 0
+}
 
 const saveRefused = computed(
 	() => refusedBase.value != null && refusedBase.value === presentationDoc.value?.modified,
@@ -165,9 +172,7 @@ const syncSnapshotToServer = async (snapshot, id, generation) => {
 	queuedSnapshots.delete(id)
 
 	if (presentationId.value !== id) {
-		// an edit made mid-save was queued as the editor left; it was built on what the
-		// server just took, so it goes out on that base, stamped into the draft first so
-		// a push that never lands still leaves the draft current for its next load
+		// the tail was built on what the server just took, so it goes out on that base
 		if (tail) {
 			const next = { ...tail, baseModified: savedModified }
 			await writeDraft(next)
@@ -202,8 +207,7 @@ const getLatestSlideContent = () => {
 	return cloneObj(latestContent)
 }
 
-// the snapshot is pushed as held, never read back: another tab editing the same
-// presentation shares this record and would hand us its content to send as ours
+// pushed as held, never read back: another tab shares this record
 const takeSnapshot = () => {
 	if (inReadonlyMode.value) return null
 	if (!slides.value?.length || !presentationId.value) return null
@@ -241,6 +245,7 @@ const saveCurrentState = async () => {
 	// if offline, stay dirty so we retry once back online
 	if (!navigator.onLine) return
 	if (snapshot.baseModified === refusedBase.value) return
+	if (Date.now() < retryAt) return
 
 	isSaving.value = true
 
@@ -248,19 +253,23 @@ const saveCurrentState = async () => {
 		// only mark clean once the server actually has the changes,
 		// and only if no edit arrived while this save was in flight
 		await syncSnapshotToServer(snapshot, idAtSnapshot, generationAtSnapshot)
-		saveFailed.value = false
+		clearSaveFailure()
 
 		// dirty belongs to another presentation now, so it isn't ours to clear
 		if (presentationId.value !== idAtSnapshot) return
 		if (generationFor(idAtSnapshot) === generationAtSnapshot) markClean()
 	} catch (err) {
-		// the draft already holds what was queued; kept here it would ride out on a later
-		// push and put its older content over the newer edits
+		// kept, the older queued edit would ride out on a later push over the newer ones
 		queuedSnapshots.delete(idAtSnapshot)
 		// keep dirty so autosave retries and beforeunload warns; log once per outage
 		if (!saveFailed.value) console.error('Save failed: ', err)
 		saveFailed.value = true
-		if (err?.exc_type === 'TimestampMismatchError') refusedBase.value = snapshot.baseModified
+		if (err?.exc_type === 'TimestampMismatchError') {
+			if (presentationId.value === idAtSnapshot) refusedBase.value = snapshot.baseModified
+		} else {
+			retryDelay = Math.min(retryDelay * 2 || 500, MAX_RETRY_MS)
+			retryAt = Date.now() + retryDelay
+		}
 	} finally {
 		isSaving.value = false
 	}
@@ -271,31 +280,17 @@ const saveChanges = async () => {
 	await saveCurrentState()
 }
 
-// a text element kept focused, or a drag kept going, holds the push back; past this
-// the draft is written anyway so a closed tab does not take the edits with it
-const VALVE_MS = 10_000
-let gatedSince = null
-
-const autosave = (gated) => {
-	if (!gated || !dirty.value) {
-		gatedSince = null
-		return saveChanges()
-	}
-	gatedSince ??= Date.now()
-	if (Date.now() - gatedSince > VALVE_MS) return saveDraft()
-}
-
 export {
 	saveCurrentState,
 	saveChanges,
 	saveDraft,
-	autosave,
 	isSaving,
 	dirty,
 	markDirty,
 	markClean,
 	writeDraft,
 	saveFailed,
+	clearSaveFailure,
 	saveRefused,
 	getPresentationFromLocalDB,
 }
