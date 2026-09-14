@@ -143,6 +143,9 @@ const deleteSlide = (deleteActive, index) => {
 	if (deleteIndex == null && deleteActive) deleteIndex = slideIndex.value
 	if (deleteIndex == null) return
 
+	flushPendingBlur()
+	resetFocus()
+
 	// if there is only one slide, reset the slide state instead of deleting
 	const totalLength = slides.value.length
 
