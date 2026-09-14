@@ -12,6 +12,8 @@ let lastRequest = Promise.resolve()
 
 const lockName = (id) => `presentation-${id}`
 
+const holdsEditLock = (id) => heldId === id
+
 const releaseEditLock = () => {
 	requests++
 	heldId = null
@@ -58,4 +60,4 @@ const acquireEditLock = (id, onLost, { steal = false } = {}) => {
 	})
 }
 
-export { lockedElsewhere, acquireEditLock, releaseEditLock }
+export { lockedElsewhere, holdsEditLock, acquireEditLock, releaseEditLock }

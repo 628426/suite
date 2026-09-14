@@ -119,7 +119,12 @@ import {
 	handleInsertSlide,
 } from '@/apps/slides/stores/slide'
 import { resetFocus, flushPendingBlur } from '@/apps/slides/stores/element'
-import { lockedElsewhere, acquireEditLock, releaseEditLock } from '@/apps/slides/stores/editLock'
+import {
+	lockedElsewhere,
+	holdsEditLock,
+	acquireEditLock,
+	releaseEditLock,
+} from '@/apps/slides/stores/editLock'
 import {
 	commandHistory,
 	setCommandHistory,
@@ -242,6 +247,8 @@ const loadEditorState = async () => {
 	const load = startLoad()
 	// read off the prop: the store flag follows one watcher later
 	const readonly = props.editorAccess == 'view'
+	// another tab may have saved while the lock was out of this tab's hands
+	const current = readonly || holdsEditLock(id)
 
 	if (!readonly) {
 		const held = await acquireEditLock(id, handleLockLost)
@@ -251,7 +258,7 @@ const loadEditorState = async () => {
 	}
 
 	performBeforeLoadOperations()
-	if (presentationDoc.value && presentationId.value === id && slides.value.length) {
+	if (current && presentationDoc.value && presentationId.value === id && slides.value.length) {
 		performAfterLoadOperations()
 		return
 	}

@@ -27,7 +27,7 @@ const makeLockManager = () => {
 	}
 }
 
-const { lockedElsewhere, acquireEditLock, releaseEditLock } = await import('./editLock')
+const { lockedElsewhere, holdsEditLock, acquireEditLock, releaseEditLock } = await import('./editLock')
 
 const settle = () => new Promise((resolve) => setTimeout(resolve))
 
@@ -92,6 +92,22 @@ describe('acquireEditLock', () => {
 		otherTab('p1')
 		await settle()
 		expect(await acquireEditLock('p1')).toBe(false)
+	})
+
+	it('holds the lock only from the grant to the release', async () => {
+		// a copy loaded while the lock was elsewhere is stale once the lock arrives
+		const other = otherTab('p1')
+		await settle()
+		await acquireEditLock('p1')
+		expect(holdsEditLock('p1')).toBe(false)
+
+		other.release()
+		await settle()
+		await acquireEditLock('p1')
+		expect(holdsEditLock('p1')).toBe(true)
+
+		releaseEditLock()
+		expect(holdsEditLock('p1')).toBe(false)
 	})
 
 	it('edits normally when the editor asks twice in one tick', async () => {
