@@ -6,6 +6,7 @@ import { slideIndex, insertSlide, getNewSlide } from '@/apps/slides/stores/slide
 import {
 	activeElements,
 	activeElementIds,
+	isSelectionLocked,
 	focusElementId,
 	addTextElement,
 	duplicateElements,
@@ -69,8 +70,8 @@ const handleCopy = (e) => {
 }
 
 const handleCut = (e) => {
-	if (isInputElement(e.target)) return
-	if (!activeElementIds.value.length) return
+	if (isInputElement(e.target) || inCropMode.value) return
+	if (!activeElementIds.value.length || isSelectionLocked.value) return
 
 	e.preventDefault()
 	copyElements(e, true)
