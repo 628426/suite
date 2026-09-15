@@ -479,7 +479,7 @@ const event = reactive({})
 
 const withActualTitle = (event) => ({ ...event, title: event.actualTitle })
 
-const handleOpenEvent = (e) => {
+const handleOpenEvent = async (e) => {
 	// Cleared on the way in rather than on the way out. Emptying it when the modal closed
 	// re-rendered the modal while it was still fading: with no calendarEvent left it read
 	// as a new event mid-animation, which enabled Save and put a remove button on every
@@ -488,6 +488,14 @@ const handleOpenEvent = (e) => {
 	Object.keys(event).forEach((key) => delete event[key])
 	Object.assign(event, e, e.calendarEvent && { calendarEvent: withActualTitle(e.calendarEvent) })
 	showEditEvent.value = true
+
+	// The detail card goes, whatever it was showing: it is drawn over the form rather
+	// than under it, so left open it puts the thing being edited behind a panel — one
+	// describing it, from the card's own edit button or a double click on its pill, or
+	// another event's, from a double click elsewhere. Awaited rather than run together:
+	// the edit is written onto the query below, and until the close has landed that
+	// query still carries the `?event=` this just dropped.
+	await closeEventDetail()
 
 	// Editing an existing event is addressable: ?edit=<id> (never for new-event
 	// drafts, which have no id and no restorable form state). Its own key, apart
@@ -561,20 +569,8 @@ const closeEventDetail = () => {
 }
 
 
-/**
- * Edit, from the detail sheet: the sheet goes first, then the form opens.
- *
- * Both surfaces are the same event, and the sheet is drawn over the form rather than
- * under it — so leaving it open puts the thing being edited behind a panel describing
- * it. Awaited rather than run together: handleOpenEvent writes `?edit=` onto the query
- * it can see, and until the close has landed that query still carries the `?event=`
- * this just dropped.
- */
-const editFromDetail = async () => {
-	const calendarEvent = openEvent.value
-	await closeEventDetail()
-	handleOpenEvent({ calendarEvent })
-}
+/** Edit, from the detail card or sheet — which handleOpenEvent closes on the way. */
+const editFromDetail = () => handleOpenEvent({ calendarEvent: openEvent.value })
 
 /** "August 2026" → the month and its year apart, so the year can be set in a lighter ink. */
 const splitYear = (title: string) => {
