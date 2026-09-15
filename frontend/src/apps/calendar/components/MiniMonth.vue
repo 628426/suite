@@ -1,8 +1,7 @@
 <template>
 	<!-- The month at a glance, on the sidebar's own type scale: nothing louder
-	     than the month's own name, which heads it. A day wears one tick that
-	     widens with how much is on it — a density map rather than a count —
-	     today is circled, and clicking a day takes the calendar there. Paging
+	     than the month's own name, which heads it. A day with something on it
+	     wears a dot per calendar, today is circled, and clicking a day takes the calendar there. Paging
 	     here only turns this card: the calendar itself moves when a day is
 	     picked, and the card follows the calendar whenever that changes month.
 
@@ -16,8 +15,26 @@
 	     rail holds nothing else that is boxed. What is left is the padding, so
 	     the grid keeps its distance from the rail's edges and its left edge
 	     lands on the section labels under it. -->
-	<div class="p-2">
-		<div class="mb-1 flex items-center gap-1.5">
+	<!-- On a phone the card is the sheet's width, and its side padding is where
+	     the dates are held off the edge. Not a fixed-width grid centred in the
+	     sheet: that put the dates wherever the centring left them, and no padding
+	     could move them — every pixel added was a pixel taken from the slack.
+	     Fluid columns and a wider gutter set the edge directly and the spread
+	     follows from what is left. In the sidebar the rail sets the width. -->
+	<div class="py-2" :class="touch ? 'px-4' : 'px-2'">
+		<!-- On a phone the columns are wider than what is in them, so a title on
+		     the grid's edge sat left of the first column's letter and the arrows
+		     right of the last. Inset to what is drawn: on the left half a column
+		     less half a two-digit date (8px, at this size), so the title starts
+		     where the widest numeral in the column does; on the right half a
+		     column less half the 40px arrow, so the chevron sits on the last
+		     column's axis. A column is
+		     a seventh of the width less the six 2px gaps. In the sidebar a column
+		     is barely wider than its circle and the edges already agree. -->
+		<div
+			class="flex items-center gap-1.5"
+			:class="touch ? 'mb-3 pl-[calc((100%-0.75rem)/14-0.5rem)] pr-[calc((100%-0.75rem)/14-1.25rem)]' : 'mb-1'"
+		>
 			<!-- The month is the card's heading and reads as one: a step up the
 			     scale, with the year left where it is. Level with the weekday letters
 			     and the dates it named nothing — a card whose loudest thing was the
@@ -56,6 +73,7 @@
 				v-for="day in days"
 				:key="day.key"
 				:day="day"
+				:touch
 				@select="(picked) => emit('select', picked.date.toDate())"
 			/>
 		</div>
@@ -82,9 +100,8 @@ const props = defineProps<{
 	 * calendar and has to know about months the main view never fetched.
 	 */
 	calendarColor: (calendar: string) => string
-	/** The day the calendar is on, and which view: Day and Week mark it, Month does not. */
+	/** The day the calendar is on, marked whatever the view. */
 	selected?: Date
-	view?: 'Month' | 'Week' | 'Day'
 	/** Drawn for a thumb rather than a pointer: the phone's picker sheet. */
 	touch?: boolean
 }>()
@@ -115,11 +132,10 @@ const selectedKey = computed(() =>
 
 // The card, the phone's month and the phone's week strip are the same six rows
 // of days with the same density on them — only the size they are drawn at
-// differs. The day the calendar is on is marked in Day and in Week: Week used
-// to say it with a band behind the whole row instead, which was a second kind
-// of highlight on a card that already has two (today's circle, the marked day)
-// and the loudest of the three. Month marks nothing — a card of one month
-// standing for a view of the same month has nothing to point at.
+// differs. The day the calendar is on is marked in every view: it is the day
+// the view is anchored on, the one paging moves and a tap here replaces, and a
+// card that showed it in some views and not others left the reader to work out
+// which kind of view they were in before reading the card.
 const { events } = useEventDensity(
 	() => viewed.value.month,
 	() => viewed.value.year,
@@ -130,6 +146,6 @@ const days = monthDays(
 	() => viewed.value.month,
 	() => viewed.value.year,
 	() => events.value,
-	() => (props.view === 'Month' ? '' : selectedKey.value),
+	() => selectedKey.value,
 )
 </script>

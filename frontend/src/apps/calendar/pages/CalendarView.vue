@@ -1052,7 +1052,6 @@ const NOTIFY_MODAL_OPTIONS = {
 				:month="calendarRef?.currentMonth"
 				:year="calendarRef?.currentYear"
 				:day="calendarRef?.currentDay"
-				:view="calendarRef?.activeView"
 				:events="visibleTodayEvents"
 				:selected-event="openEvent"
 				@update:visible-calendars="

@@ -131,17 +131,14 @@
 		     has loaded still says which of its days are busy. -->
 		<BottomSheet v-model:open="isPickerOpen">
 			<div class="px-2 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
-				<!-- The circle marks a day the view is actually on — the day, and the
-				     week, whose own date is the day it is drawn around. Not the agenda or
-				     the month: a list spanning three months is anchored on a date rather
-				     than showing one, and a circle in the grid claimed more than that.
-				     `Month` is how the card is told to mark nothing. -->
+				<!-- The circle marks the day the view is anchored on, whatever the view:
+				     the day itself, the day the week is drawn around, the day the month
+				     or the agenda was opened on and paging moves. -->
 				<MiniMonth
 					:month="pickerMonth.month"
 					:year="pickerMonth.year"
 					:calendar-color="calendarColor"
-					:selected="isDay || isWeek ? dayjs(selected).toDate() : undefined"
-					:view="isDay ? 'Day' : isWeek ? 'Week' : 'Month'"
+					:selected="dayjs(selected).toDate()"
 					touch
 					@select="(date) => pickDate(dayjs(date).format('YYYY-MM-DD'))"
 				/>

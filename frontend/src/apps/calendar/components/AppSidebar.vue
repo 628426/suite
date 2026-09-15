@@ -32,9 +32,8 @@ const { calendars, visibleCalendars, events, selectedEvent } = defineProps<{
 	/** The month the calendar shows; the mini month mirrors it. */
 	month?: number
 	year?: number
-	/** The day it is on and the view it is in, for the mini month's selection. */
+	/** The day it is on, for the mini month's selection. */
 	day?: number
-	view?: 'Month' | 'Week' | 'Day'
 	/** Today's events: `fromDate`/`toDate` in the viewer's zone, a palette `color`. */
 	events?: any[]
 	/** The open event, so its row reads as active. */
@@ -190,7 +189,6 @@ const menuItems = computed(() => [
 						:year
 						:calendar-color="miniMonthColor"
 						:selected="day != null ? new Date(year, month, day) : undefined"
-						:view
 						@select="(date) => emit('selectDate', date)"
 					/>
 				</div>
