@@ -284,7 +284,7 @@ const fetchPresentation = async (name) => {
 		return { doc, content: restored, dirty: local.dirty || repaired }
 	}
 	// the draft belongs to the tab that can write; this one neither rewrites nor reports it
-	if (local?.dirty && !inReadonlyMode.value) {
+	if (local?.dirty && !viewOnly.value && !lockedElsewhere.value) {
 		if (!landed) toast.warning('Changes that never reached the server were discarded.')
 		// left dirty, the same draft is found and discarded again on every load
 		await writeDraft({
@@ -408,8 +408,6 @@ const savePresentationDoc = async (id, updatedSlides, baseModified) => {
 
 // returns the committed doc, or null if a later load took over
 const initPresentationDoc = async (id, readonly = false, load = startLoad()) => {
-	// a refused tab reloading in place writes again, so the load sees it as a writer
-	clearSaveFailure()
 	let loaded
 
 	if (readonly) {
@@ -430,6 +428,8 @@ const initPresentationDoc = async (id, readonly = false, load = startLoad()) => 
 
 	if (!isLatestLoad(load)) return null
 
+	// a refused tab reloading in place writes again once the server copy is on screen
+	clearSaveFailure()
 	showPresentation(id, loaded)
 	frappeRequest({
 		url: 'suite.drive.api.files.track_visit',

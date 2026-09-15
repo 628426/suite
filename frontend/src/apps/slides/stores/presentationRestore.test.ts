@@ -154,6 +154,23 @@ describe('loading a presentation', () => {
 		expect(writeDraft).toHaveBeenCalledWith(expect.objectContaining({ dirty: false }))
 	})
 
+	it('holds the refusal until the reload lands', async () => {
+		saveRefused.value = true
+		served = { modified: 'M2', slides: [slide('#ff0000ff')] }
+		let release: () => void = () => {}
+		holds.set('p1', new Promise<void>((resolve) => (release = resolve)))
+
+		const reload = initPresentationDoc('p1')
+		await new Promise((resolve) => setTimeout(resolve))
+
+		// the stale slides on screen must not turn editable while the fetch is out
+		expect(inReadonlyMode.value).toBe(true)
+
+		release()
+		await reload
+		expect(inReadonlyMode.value).toBe(false)
+	})
+
 	it('leaves the draft and the discard notice to the tab that holds the lock', async () => {
 		lockedElsewhere.value = true
 		local = { dirty: true, baseModified: 'M1', content: [slide('#00ff00ff')] }
