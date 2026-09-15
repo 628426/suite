@@ -341,9 +341,12 @@ const handleDeactivated = () => {
 	thumbnailCaptureRef.value?.reset()
 	clearInterval(autosaveInterval)
 
-	// the slideshow keeps the editor and its lock, so the edits go out before it starts
-	if (router.currentRoute.value.name === 'slides-slideshow') saveChanges()
-	else leavePresentation()
+	// the slideshow keeps the editor and its lock, so only the edits go out before it starts
+	if (router.currentRoute.value.name === 'slides-slideshow') {
+		flushPendingBlur()
+		resetFocus()
+		saveChanges()
+	} else leavePresentation()
 }
 
 const handleBeforeUnmount = () => {
