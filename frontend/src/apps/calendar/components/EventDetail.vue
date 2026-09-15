@@ -529,7 +529,7 @@ const openUrl = (location: string) => {
 				<!-- h-12, the height of the app's header bars. The event's name leads it, where
 				     a name belongs; the row is a fixed height, so a long one truncates rather
 				     than growing it and the tooltip carries the whole of it. -->
-				<div class="flex h-12 items-center gap-3 px-4.5">
+				<div class="flex h-12 shrink-0 items-center gap-3 px-4.5">
 					<!-- The calendar's colour before the name it belongs to: it is the one mark
 					     shared with the pills in the grid, so it answers "which of these is the one
 					     I clicked" before the name has to be read.
@@ -853,7 +853,7 @@ const openUrl = (location: string) => {
 				     edge, still does. -->
 				<div
 					v-if="userParticipant?.expect_reply"
-					class="flex flex-col gap-2 px-4.5 pt-3"
+					class="flex shrink-0 flex-col gap-2 px-4.5 pt-3"
 					:class="variant === 'sheet' ? 'pb-1' : 'pb-3'"
 				>
 					<span class="text-ink-gray-6 text-sm">{{ __('Going?') }}</span>
