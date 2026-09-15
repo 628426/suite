@@ -34,7 +34,7 @@ const getCopiedElementsJSON = (isCut = false) =>
 		srcPresentation: presentationId.value,
 		srcSlide: slideIndex.value,
 		isCut,
-		elements: activeElements.value,
+		elements: isCut ? activeElements.value.filter((el) => !el.locked) : activeElements.value,
 	})
 
 const getCopiedSlideJSON = () => {
