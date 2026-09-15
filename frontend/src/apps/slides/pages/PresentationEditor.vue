@@ -319,6 +319,8 @@ const leavePresentation = () => {
 	resetFocus()
 	saveChanges()
 	releaseEditLock()
+	// a store left live would push from Home after giving up the lock
+	resetEditorState()
 }
 
 // the taking tab pushes what it finds in the draft; a push from here would race it
@@ -379,7 +381,6 @@ watch(
 
 		if (name === 'slides-editor-new') {
 			leavePresentation()
-			resetEditorState()
 			themeDialogAction.value = 'create'
 			showThemeDialog.value = true
 			return
