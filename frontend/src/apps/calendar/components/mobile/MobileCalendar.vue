@@ -12,8 +12,14 @@
 		<!-- A flat h-14 title row on mail's geometry — hamburger, then the period,
 		     then actions — so on a phone the two apps share one top edge. The
 		     hamburger opens the view switcher, where mail's opens its folders:
-		     which list you are looking at is the same question in both. -->
-		<div class="flex h-14 items-center gap-1 px-1">
+		     which list you are looking at is the same question in both.
+
+		     The rule under it is the bar's own, drawn here in every view rather
+		     than left to whichever view happened to draw one at its top: the day
+		     grid did and the others did not, so the bar had a bottom edge on one
+		     screen in four. `noBorder` tells the views to draw none of their own
+		     there. -->
+		<div class="flex h-14 items-center gap-1 border-b border-outline-gray-1 px-1">
 			<button
 				:aria-label="__('Switch view')"
 				class="text-ink-gray-6 flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
