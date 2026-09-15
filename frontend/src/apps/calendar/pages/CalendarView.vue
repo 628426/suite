@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, reactive, ref, useTemplateRef, watch } from 'vue'
+import { computed, inject, nextTick, onMounted, reactive, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNow } from '@vueuse/core'
 import {
@@ -27,6 +27,7 @@ import { invalidateEventDensity } from '@/apps/calendar/composables/useEventDens
 import { rememberCalendarView } from '@/apps/calendar/utils/lastView'
 import AppSidebar from '@/apps/calendar/components/AppSidebar.vue'
 import EventDetailSidebar from '@/apps/calendar/components/EventDetailSidebar.vue'
+import EventPopover from '@/apps/calendar/components/EventPopover.vue'
 import EventModal from '@/apps/calendar/components/Modals/EventModal.vue'
 import RecurringScopeModal from '@/apps/calendar/components/Modals/RecurringScopeModal.vue'
 import EventDetailSheet from '@/apps/calendar/components/mobile/EventDetailSheet.vue'
@@ -432,15 +433,11 @@ const eventsPending = computed(
 	() => events.loading || (!events.data && !events.error),
 )
 
+const onVisibleCalendar = (event) =>
+	event.calendars.map((c) => c.calendar).some((cal) => visibleCalendars.value.includes(cal))
+
 const visibleEvents = computed(
-	() =>
-		events.data
-			?.filter((event) =>
-				event.calendars
-					.map((c) => c.calendar)
-					.some((cal) => visibleCalendars.value.includes(cal)),
-			)
-			.map(withCalendarColor) || [],
+	() => events.data?.filter(onVisibleCalendar).map(withCalendarColor) || [],
 )
 
 const showEditEvent = ref(false)
@@ -586,10 +583,15 @@ const newEventDate = () => {
 	return range.view === 'Month' ? start.add(1, 'week').startOf('month').toDate() : start.toDate()
 }
 
-// A pill in the grid and a row in the sidebar's upcoming list toggle the
-// detail panel the way mail's does: a second click on the open event closes it.
-const toggleEventDetail = (calendarEvent) => {
+// A pill in the grid toggles the open event the way mail's list does: a second
+// click on the open one closes it. The pill itself is kept, since on desktop the
+// event opens as a card hung on it — see `cardPill` below.
+const toggleEventDetail = (calendarEvent, e?: Event) => {
 	const open = selectedCalendarEvent.value
+	// From the target up, not `currentTarget`: the calendar hands the click over
+	// 200ms after it landed, once it knows no second click is coming, and by then
+	// the event's currentTarget has been unset. The target it keeps.
+	if (e?.target instanceof Element) clickedPill.value = e.target.closest(PILL_SELECTOR)
 	if (
 		open &&
 		open.id === calendarEvent.id &&
@@ -598,6 +600,103 @@ const toggleEventDetail = (calendarEvent) => {
 		closeEventDetail()
 	else handleEventClick({ calendarEvent })
 }
+
+// --- The card (desktop) ---
+
+// The pill a click landed on, and the pill the card hangs on. They part when the
+// grid is redrawn under an open card: a reload after an RSVP keeps the pill (it is
+// keyed on the event's id), but a change of view or of month draws the event's pill
+// afresh or not at all. So the card's pill is resolved again after every such
+// redraw, from the clicked one while it still stands and otherwise from the mark
+// the calendar puts on the open event — `CalendarActiveEvent`, drawn as `.active`
+// on the pill — which finds the redrawn pill wherever the new view put it. With no
+// pill anywhere (a link to an event in an unticked calendar, or the month paged
+// away from it) the event has nothing to hang on and shows in the panel instead:
+// open is open, and the URL says it is.
+const clickedPill = ref<Element | null>(null)
+const cardPill = ref<Element | null>(null)
+const openIn = ref<'card' | 'panel' | ''>('')
+
+// The calendar's pills in the grids and its rows in the agenda, by the classes it
+// styles them with. The grid's own element, not the Calendar's `$el`: its template
+// opens with a comment, which the dev build keeps, and a component whose root is a
+// fragment has a text anchor for an `$el`, with nothing to query.
+const PILL_SELECTOR = '.event, .calendar-row'
+const gridRef = useTemplateRef<HTMLElement>('grid')
+
+const activePill = () =>
+	gridRef.value?.querySelector('.event.active, .calendar-row.active') ?? null
+
+watch([selectedCalendarEvent, visibleRange], async ([open]) => {
+	if (!open) {
+		clickedPill.value = null
+		cardPill.value = null
+		openIn.value = ''
+		return
+	}
+	// After the flush, so the redrawn grid — and the active mark on it — is there
+	// to be asked. What was showing keeps showing until then, so a reload does not
+	// blink the card.
+	await nextTick()
+	if (!selectedCalendarEvent.value) return
+	cardPill.value = clickedPill.value?.isConnected ? clickedPill.value : activePill()
+	openIn.value = cardPill.value ? 'card' : 'panel'
+})
+
+// Beside the pill in the grids, where the column beside it has room; under the
+// row in the day and the agenda, whose rows run the whole width.
+const cardSide = computed(() => {
+	const view = visibleRange.value?.view
+	return view === 'Month' || view === 'Week' ? 'left' : 'bottom'
+})
+
+// --- The peek (desktop) ---
+
+// A row in the sidebar's upcoming list opens the panel without touching the URL:
+// a glance at what is coming, not the open event, so it is not what a link or a
+// reload would restore. Held as the ids and looked up on every read, the way the
+// open event is, so a reload after an RSVP swaps in the fresh copy and a delete
+// closes it. Its own thing beside the card: a card opening leaves it be, and a
+// row press lands outside the card, which is what closes that.
+const peeked = ref<{ id: string; recurrence?: string } | null>(null)
+
+const peekedEvent = computed(() => {
+	if (!peeked.value) return null
+	const linked = findLinkedEvent(events.data, peeked.value.id, peeked.value.recurrence)
+	return linked && withCalendarColor(linked)
+})
+
+const closePeek = () => (peeked.value = null)
+
+const togglePeek = (calendarEvent) => {
+	const open = peekedEvent.value
+	if (
+		open &&
+		open.id === calendarEvent.id &&
+		(open.recurrence_id ?? '') === (calendarEvent.recurrence_id ?? '')
+	)
+		return closePeek()
+	peeked.value = {
+		// The master's id, as the URL carries it — see handleEventClick.
+		id: calendarEvent.master_id || calendarEvent.id,
+		recurrence: calendarEvent.recurrence_id || undefined,
+	}
+}
+
+// What the panel shows: the peek, or the open event when it has no pill to hang
+// on. Closing it closes whichever that is.
+const panelEvent = computed(() =>
+	peekedEvent.value ?? (openIn.value === 'panel' ? selectedCalendarEvent.value : null),
+)
+const closePanel = () => (peekedEvent.value ? closePeek() : closeEventDetail())
+
+// The calendar draws the open event's pill raised, and the peeked one's when
+// nothing is open. Set from here rather than left to the click: closing either
+// clears its mark, and a grid click — which the calendar uses to let go of the
+// mark — is put right by the next change.
+watch([selectedCalendarEvent, peekedEvent], ([open, peek]) => {
+	CalendarActiveEvent.value = open?.id ?? peek?.id ?? ''
+})
 
 // Which row the sheet was opened from. An event spanning several days has a row on
 // each of them and they are the same event, so the id alone cannot say which was
@@ -619,9 +718,10 @@ watch(selectedCalendarEvent, (open) => {
 	if (!open) openRow.value = ''
 })
 
-// Escape closes the open event, the way it closes anything laid over what you
-// were reading. Registered only while one is open, so the key is left to
-// whatever else wants it the rest of the time.
+// Escape closes the panel, the way it closes anything laid over what you were
+// reading. Registered only while it is showing something, so the key is left to
+// whatever else wants it the rest of the time. The card answers Escape itself,
+// as a popover does; on a phone the sheet does.
 //
 // `useKeyboardShortcut` already declines to fire while focus is in a field or
 // inside a dialog, which is what keeps this from closing the panel behind the
@@ -631,8 +731,8 @@ useKeyboardShortcut({
 	combo: 'Escape',
 	description: __('Close the open event'),
 	group: __('Calendar'),
-	enabled: () => !!selectedCalendarEvent.value,
-	handler: closeEventDetail,
+	enabled: () => !isMobile.value && !!panelEvent.value,
+	handler: closePanel,
 })
 
 // The calendar app has no compose surface of its own — hand over to mail's
@@ -676,10 +776,6 @@ watch(
 		// goes on here, since this list has not been through `visibleEvents`.
 		const linked = findLinkedEvent(data, id, recurrence)
 		selectedCalendarEvent.value = linked && withCalendarColor(linked)
-		// The calendar draws the selected row as a raised card. The selection itself lives
-		// in ?event=, so it is set from here rather than left to the click — closing the
-		// sidebar clears the param, and the card goes with it.
-		CalendarActiveEvent.value = selectedCalendarEvent.value?.id ?? ''
 	},
 	{ immediate: true },
 )
@@ -944,7 +1040,7 @@ const NOTIFY_MODAL_OPTIONS = {
 				:day="calendarRef?.currentDay"
 				:view="calendarRef?.activeView"
 				:events="visibleEvents"
-				:selected-event="selectedCalendarEvent"
+				:selected-event="peekedEvent ?? selectedCalendarEvent"
 				@update:visible-calendars="
 					(name) =>
 						visibleCalendars.includes(name)
@@ -952,15 +1048,15 @@ const NOTIFY_MODAL_OPTIONS = {
 							: visibleCalendars.push(name)
 				"
 				@select-date="(date) => calendarRef?.setCalendarDate(date)"
-				@select-event="toggleEventDetail"
+				@select-event="togglePeek"
 			/>
-			<div class="min-h-0 min-w-0 flex-1 p-4">
+			<div ref="grid" class="min-h-0 min-w-0 flex-1 p-4">
 				<Calendar
 					ref="calendar"
 					:events="visibleEvents"
 					:loading="eventsPending"
 					:config="{ isEditMode: true }"
-					:on-click="({ calendarEvent }) => toggleEventDetail(calendarEvent)"
+					:on-click="({ e, calendarEvent }) => toggleEventDetail(calendarEvent, e)"
 					:on-dbl-click="(event) => handleOpenEvent(event)"
 					:on-cell-click="(event) => handleOpenEvent(event)"
 					@update="handleUpdate"
@@ -1019,15 +1115,40 @@ const NOTIFY_MODAL_OPTIONS = {
 					</template>
 				</Calendar>
 			</div>
+			<!-- The open event, as a card hung on its pill. Its own popover rather than
+			     the calendar's: that one opens and closes on the pill's own say-so,
+			     where this one is the URL's — ?event= opens it, closing clears it, and
+			     a link or a reload lands on the same card. Not keyed on the event: the
+			     popover stays up while the event under it changes, and only what is in
+			     it is rebuilt, so moving from one pill to the next does not blink. -->
+			<EventPopover
+				:open="openIn === 'card'"
+				:anchor="cardPill"
+				:side="cardSide"
+				@close="closeEventDetail"
+			>
+				<EventDetailSidebar
+					v-if="selectedCalendarEvent"
+					:key="selectedCalendarEvent.id + (selectedCalendarEvent.recurrence_id ?? '')"
+					variant="popover"
+					:calendar-event="selectedCalendarEvent"
+					@close="closeEventDetail"
+					@edit="editFromDetail"
+					@reload-events="reloadEvents"
+					@email-participants="emailParticipants"
+				/>
+			</EventPopover>
 			<!-- Desktop only: a side panel with a fixed width, which on a phone covered
 			     the grid it is meant to sit beside. There the same component is hosted
-			     in a bottom sheet instead (EventDetailSheet, below). -->
+			     in a bottom sheet instead (EventDetailSheet, below). Here it shows the
+			     rail's peek, or the open event when no pill of it is on screen for the
+			     card to hang on — see `panelEvent`. -->
 			<EventDetailSidebar
-				v-if="selectedCalendarEvent"
-				:key="selectedCalendarEvent.id + (selectedCalendarEvent.recurrence_id ?? '')"
-				:calendar-event="selectedCalendarEvent"
-				@close="closeEventDetail"
-				@edit="handleOpenEvent({ calendarEvent: selectedCalendarEvent })"
+				v-if="panelEvent"
+				:key="panelEvent.id + (panelEvent.recurrence_id ?? '')"
+				:calendar-event="panelEvent"
+				@close="closePanel"
+				@edit="handleOpenEvent({ calendarEvent: panelEvent })"
 				@reload-events="reloadEvents"
 				@email-participants="emailParticipants"
 			/>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, ref } from 'vue'
+import { computed, inject, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import {
 	Bell,
@@ -59,9 +59,12 @@ const { calendarEvent, variant = 'panel' } = defineProps<{
 	 * the sheet would scroll the panel whole, carrying the RSVP off the bottom the
 	 * moment the participants list was expanded. Bounded here instead — to the sheet's
 	 * own 90dvh — so the details scroll inside it and the answer stays where a thumb
-	 * left it.
+	 * left it. `popover` is the card a pill in the grid opens beside itself: the
+	 * panel's width, the popover shell's surface and border, and a height bounded
+	 * by the room reka reports beside the pill so the details scroll inside the
+	 * card rather than the card running off the screen.
 	 */
-	variant?: 'panel' | 'sheet'
+	variant?: 'panel' | 'sheet' | 'popover'
 }>()
 const router = useRouter()
 
@@ -293,6 +296,20 @@ const rowParticipants = computed(() => orderedParticipants.value.slice(0, ROW_AV
 const rootRef = ref<HTMLElement | null>(null)
 const heldHeight = ref<number | null>(null)
 
+/**
+ * The popover takes focus as a whole, not through its first control. reka's
+ * focus scope puts focus on the first tabbable thing in a popover as it opens —
+ * the More button here — and a pill's popover opens 200ms after the click, far
+ * enough from it that the browser no longer reads the focus as the pointer's and
+ * draws the button's keyboard ring. Focus set here, in the card's own mount,
+ * lands before the scope looks, and a scope that finds focus already inside
+ * leaves it be. The root is made focusable for it and its outline turned off,
+ * so nothing is lit; Escape still closes and Tab still reaches the controls.
+ */
+onMounted(() => {
+	if (variant === 'popover') rootRef.value?.focus({ preventScroll: true })
+})
+
 /** Which way the page slides — see the Transition in the template. */
 const pageSlide = ref<'slide-forward' | 'slide-back'>('slide-forward')
 
@@ -482,11 +499,14 @@ const openUrl = (location: string) => {
 <template>
 	<div
 		ref="rootRef"
+		:tabindex="variant === 'popover' ? -1 : undefined"
 		:style="heldHeight ? { height: `${heldHeight}px` } : undefined"
 		:class="
 			variant === 'sheet'
 				? 'relative flex max-h-[90dvh] w-full flex-col overflow-hidden text-left'
-				: 'bg-surface-base relative flex h-full w-[352px] shrink-0 flex-col overflow-hidden border-l text-left'
+				: variant === 'popover'
+					? 'relative flex max-h-[min(var(--reka-popover-content-available-height),40rem)] w-[352px] flex-col overflow-hidden text-left outline-none'
+					: 'bg-surface-base relative flex h-full w-[352px] shrink-0 flex-col overflow-hidden border-l text-left'
 		"
 	>
 		<!-- The two pages, one in the flow at a time, the other sliding through:
