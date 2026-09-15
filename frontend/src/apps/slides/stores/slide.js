@@ -82,9 +82,11 @@ const getNewSlide = (toDuplicate = false, layoutObject, source = currentSlide.va
 	// override metadata and generate unique IDs for elements
 	slide.clientId = uuid4()
 	slide.parent = presentationId.value
-	slide.fadeUnmatchedElements = 1
-	slide.transitionDuration = 0
-	slide.transition = 'None'
+	if (!toDuplicate) {
+		slide.fadeUnmatchedElements = 1
+		slide.transitionDuration = 0
+		slide.transition = 'None'
+	}
 
 	return slide
 }
@@ -140,6 +142,9 @@ const deleteSlide = (deleteActive, index) => {
 	let deleteIndex = index ?? focusedSlide.value
 	if (deleteIndex == null && deleteActive) deleteIndex = slideIndex.value
 	if (deleteIndex == null) return
+
+	flushPendingBlur()
+	resetFocus()
 
 	// if there is only one slide, reset the slide state instead of deleting
 	const totalLength = slides.value.length
