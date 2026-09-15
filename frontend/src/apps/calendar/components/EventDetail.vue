@@ -61,7 +61,9 @@ const { calendarEvent, variant = 'popover' } = defineProps<{
 	 * border but not the scroll: the sheet would scroll the card whole, carrying
 	 * the RSVP off the bottom the moment the participants list was expanded.
 	 * Bounded here instead — to the sheet's own 90dvh — so the details scroll
-	 * inside it and the answer stays where a thumb left it.
+	 * inside it and the answer stays where a thumb left it. Floored at half the
+	 * screen as well: an event with little to say made a sheet too short to
+	 * read as one.
 	 */
 	variant?: 'popover' | 'sheet'
 }>()
@@ -502,7 +504,7 @@ const openUrl = (location: string) => {
 		:style="heldHeight ? { height: `${heldHeight}px` } : undefined"
 		:class="
 			variant === 'sheet'
-				? 'relative flex max-h-[90dvh] w-full flex-col overflow-hidden text-left'
+				? 'relative flex max-h-[90dvh] min-h-[50dvh] w-full flex-col overflow-hidden text-left'
 				: 'relative flex max-h-[min(var(--reka-popover-content-available-height),40rem)] w-[352px] flex-col overflow-hidden text-left outline-none'
 		"
 	>
@@ -519,11 +521,14 @@ const openUrl = (location: string) => {
 		     much the moment it left the flow, and its pinned footer dropped by the
 		     same — under the home indicator, on a phone. -->
 		<Transition :name="pageSlide" @after-leave="onPageLeft">
+			<!-- flex-1 in the sheet too: the sheet has a floor now, and a page that did
+			     not fill it left the RSVP adrift above blank sheet rather than pinned
+			     to its bottom edge. -->
 			<div
 				v-if="sheetPage === 'event'"
 				key="event"
-				class="flex min-h-0 flex-col"
-				:class="variant === 'sheet' ? 'pb-[calc(env(safe-area-inset-bottom)+0.5rem)]' : 'flex-1'"
+				class="flex min-h-0 flex-1 flex-col"
+				:class="variant === 'sheet' && 'pb-[calc(env(safe-area-inset-bottom)+0.5rem)]'"
 			>
 				<!-- Header -->
 				<!-- h-12, the height of the app's header bars. The event's name leads it, where
