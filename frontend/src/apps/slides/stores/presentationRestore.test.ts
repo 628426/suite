@@ -214,6 +214,18 @@ describe('overlapping loads', () => {
 		expect(slides.value[0].background).toBe('#00ff00ff')
 	})
 
+	it('leaves the draft alone once the editor moved past the load', async () => {
+		local = { dirty: true, baseModified: 'M0', content: [slide('#00ff00ff')] }
+		const slow = initPresentationDoc('slow')
+		startLoad()
+		releaseSlow()
+
+		// the read-only state it would consult belongs to whatever is open now
+		expect(await slow).toBe(null)
+		expect(writeDraft).not.toHaveBeenCalled()
+		expect(warning).not.toHaveBeenCalled()
+	})
+
 	it('drops a load the editor moved past while it was in flight', async () => {
 		const slow = initPresentationDoc('slow')
 		// the editor short-circuits back to a presentation it already holds

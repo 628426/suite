@@ -256,7 +256,7 @@ const fetchDoc = (name) =>
 	})
 
 // touches no editor state, so a save during the load still targets what is on screen
-const fetchPresentation = async (name) => {
+const fetchPresentation = async (name, load) => {
 	const doc = await fetchDoc(name)
 	const local = await getPresentationFromLocalDB(name).catch(() => null)
 	// the push this draft waited on landed after all
@@ -283,8 +283,9 @@ const fetchPresentation = async (name) => {
 		// server content at baseModified and there is nothing to push
 		return { doc, content: restored, dirty: local.dirty || repaired }
 	}
-	// the draft belongs to the tab that can write; this one neither rewrites nor reports it
-	if (local?.dirty && !viewOnly.value && !lockedElsewhere.value) {
+	// the draft belongs to the tab that can write, on the presentation it is still opening;
+	// this one neither rewrites nor reports it
+	if (local?.dirty && isLatestLoad(load) && !viewOnly.value && !lockedElsewhere.value) {
 		if (!landed) toast.warning('Changes that never reached the server were discarded.')
 		// left dirty, the same draft is found and discarded again on every load
 		await writeDraft({
@@ -423,7 +424,7 @@ const initPresentationDoc = async (id, readonly = false, load = startLoad()) => 
 		}
 		loaded = { doc, content: JSON.parse(JSON.stringify(doc.slides || [])), dirty: false }
 	} else {
-		loaded = await fetchPresentation(id)
+		loaded = await fetchPresentation(id, load)
 	}
 
 	if (!isLatestLoad(load)) return null
