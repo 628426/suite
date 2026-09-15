@@ -3,6 +3,7 @@ import { computed, inject, nextTick, onMounted, reactive, ref, useTemplateRef, w
 import { useRoute, useRouter } from 'vue-router'
 import { useNow } from '@vueuse/core'
 import {
+	Avatar,
 	Button,
 	Dialog,
 	TabButtons,
@@ -19,7 +20,13 @@ import { eventLastDay, isAllDayEvent } from '@/apps/calendar/utils/eventTime'
 import { reanchoredRule } from '@/apps/calendar/utils/recurrence'
 import { isFirstOccurrence, scopeOptions } from '@/apps/calendar/utils/recurringScope'
 import type { RecurringScope } from '@/apps/calendar/utils/recurringScope'
-import { eventDescription, eventGoing, eventPlace } from '@/apps/calendar/utils/eventMeta'
+import {
+	eventDescription,
+	eventFaces,
+	eventMore,
+	eventPeople,
+	eventPlace,
+} from '@/apps/calendar/utils/eventMeta'
 import { weekSpanLabel } from '@/apps/calendar/utils/format'
 import { userStore } from '@/apps/calendar/stores/user'
 import { invalidateEventDensity } from '@/apps/calendar/composables/useEventDensity'
@@ -301,7 +308,7 @@ const transformEvent = (event) => {
 		// this the library has nothing to say about where an event is or who is in
 		// it — and the popover's venue and participant lines never appear.
 		venue: eventPlace(event),
-		participant: eventGoing(event),
+		participant: eventPeople(event),
 		// The viewer declined: struck through in the grid.
 		isDeclined: !!event.participants?.some(
 			(p) => p.participation_status === 'DECLINED' && isOwnEmail(p.email),
@@ -1115,9 +1122,10 @@ const NOTIFY_MODAL_OPTIONS = {
 					</template>
 
 					<!-- The rail's and agenda's rows have room for what a pill does
-					     not: where the event is, how often it repeats, who is coming.
-					     frappe-ui hands back what it worked out itself, so this adds
-					     to it rather than deriving it twice — the same line the phone's
+					     not: where the event is, and how often it repeats. Who is
+					     coming is the row's own far end, from `participant`. frappe-ui
+					     hands back what it worked out itself, so this adds to it
+					     rather than deriving it twice — the same line the phone's
 					     agenda shows, from the same place. -->
 					<template #event-description="{ calendarEvent, date }">
 						{{
@@ -1125,6 +1133,29 @@ const NOTIFY_MODAL_OPTIONS = {
 								.filter(Boolean)
 								.join(' · ')
 						}}
+					</template>
+
+					<!-- Who the event is with, at the row's far end, as faces rather than
+					     the count the library would print: the library has a string,
+					     this has the people. Everyone invited, whatever they answered —
+					     the answers are the card's to show. The first three, and "+N"
+					     for the rest of a crowd, so a meeting of fourteen still reads as
+					     one where three faces alone would not. The stack the detail
+					     card's participants row draws, to the class — 20px faces on the
+					     row's own line, ringed in an outline colour rather than the row's
+					     ground, overlapped by 6. -->
+					<template #event-participant="{ calendarEvent }">
+						<span class="flex items-center">
+							<Avatar
+								v-for="p in eventFaces(calendarEvent)"
+								:key="p.email"
+								:image="p.user_image"
+								:label="p._name || p.email"
+								size="sm"
+								class="-ml-1.5 ring-1 ring-outline-gray-2 first:ml-0"
+							/>
+						</span>
+						<template v-if="eventMore(calendarEvent)">+{{ eventMore(calendarEvent) }}</template>
 					</template>
 				</Calendar>
 			</div>

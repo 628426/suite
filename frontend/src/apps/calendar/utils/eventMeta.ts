@@ -18,7 +18,13 @@ interface MetaEvent {
 	locations?: Array<{ _name?: string }>
 	links?: Array<{ href?: string }>
 	recurrence_rule?: { frequency?: string }
-	participants?: Array<{ participation_status?: string }>
+	organizer?: string
+	participants?: Array<{
+		participation_status?: string
+		email?: string
+		_name?: string
+		user_image?: string
+	}>
 }
 
 /**
@@ -40,20 +46,41 @@ export const eventRepeat = (event: MetaEvent): string => {
 	return getRepeatMessage(event.recurrence_rule) || ''
 }
 
-/** How many said yes — worth saying only once it is a crowd rather than a pair. */
-export const eventGoing = (event: MetaEvent): string => {
-	const going = event.participants?.filter(
-		(p) => p.participation_status === 'ACCEPTED',
-	).length
-	return going && going > 1 ? __('{0} going', [String(going)]) : ''
+const people = (event: MetaEvent) => event.participants ?? []
+
+/**
+ * How many are in it — everyone invited, whatever they answered: a row says
+ * who the event is with, and the answers are the card's to show. Worth saying
+ * only once it is a crowd rather than a pair. The row's far end shows this
+ * unless the host replaces it with faces.
+ */
+export const eventPeople = (event: MetaEvent): string => {
+	const count = people(event).length
+	return count > 1 ? __('{0} people', [String(count)]) : ''
 }
 
 /**
- * The whole line, in reading order: where, how often, how many. The phone shows
- * this as it stands; the desktop composes the same parts around the calendar's
- * own note about an event running on past the day.
+ * The first few of them, for a stack of faces at the row's far end: the
+ * organizer first, since theirs is the face a reader knows the event by, then
+ * the rest in the order the event lists them.
+ */
+export const eventFaces = (event: MetaEvent, count = 3) => {
+	const all = people(event)
+	// Either side may carry the mailto: the server sends on an organizer.
+	const address = (email?: string) => email?.replace('mailto:', '')
+	const host = all.find((p) => address(p.email) === address(event.organizer))
+	return [...(host ? [host] : []), ...all.filter((p) => p !== host)].slice(0, count)
+}
+
+/** How many beyond the faces shown, for the "+N" after them. */
+export const eventMore = (event: MetaEvent, shown = 3) => Math.max(people(event).length - shown, 0)
+
+/**
+ * The line, in reading order: where, then how often. Not how many: that is a
+ * count, and the row sets it at its far end from `participant` — see the event
+ * transform in CalendarView — where the counts of a day's rows line up. The
+ * desktop composes these parts around the calendar's own note about an event
+ * running on past the day.
  */
 export const eventDescription = (event: MetaEvent): string =>
-	[eventPlace(event), eventRepeat(event), eventGoing(event)]
-		.filter(Boolean)
-		.join(' · ')
+	[eventPlace(event), eventRepeat(event)].filter(Boolean).join(' · ')
