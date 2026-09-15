@@ -241,8 +241,14 @@ const removeParticipant = (email: string) => {
 		     matches it, and the rest of the time it is who is coming. The matches
 		     replace the participants rather than covering them — the field is being
 		     used to add someone, and the list of who is already here is the one thing
-		     on screen that is not the answer to that. -->
-		<div class="max-h-[32rem] space-y-3 overflow-y-auto">
+		     on screen that is not the answer to that.
+
+		     No height of its own: every host already scrolls what this is in — the
+		     event form's rail and the phone's form page scroll their column, and
+		     Meet's schedule dialog grows and scrolls with its overlay — and a list
+		     capped inside one of those scrolled twice: it stopped at its own cap with
+		     the column's spare room blank beneath it, and read as cut off. -->
+		<div class="space-y-3">
 			<template v-if="variant === 'inline' && isSearching">
 				<!-- The same row as a participant's, because the two take turns in this
 				     column: same `lg` avatar, same 8px gap, same two lines in the same
