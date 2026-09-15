@@ -2,14 +2,7 @@
 import { computed, inject, nextTick, onMounted, reactive, ref, useTemplateRef, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useNow } from '@vueuse/core'
-import {
-	Avatar,
-	Button,
-	Dialog,
-	TabButtons,
-	createResource,
-	usePageMeta,
-} from 'frappe-ui'
+import { Button, Dialog, TabButtons, createResource, usePageMeta } from 'frappe-ui'
 import { Calendar, CalendarActiveEvent, calendarDaySpan } from 'frappe-ui/experimental'
 
 import { useScreenSize } from '@/composables/useScreenSize'
@@ -20,13 +13,7 @@ import { eventLastDay, isAllDayEvent } from '@/apps/calendar/utils/eventTime'
 import { reanchoredRule } from '@/apps/calendar/utils/recurrence'
 import { isFirstOccurrence, scopeOptions } from '@/apps/calendar/utils/recurringScope'
 import type { RecurringScope } from '@/apps/calendar/utils/recurringScope'
-import {
-	eventDescription,
-	eventFaces,
-	eventMore,
-	eventPeople,
-	eventPlace,
-} from '@/apps/calendar/utils/eventMeta'
+import { eventPeople, eventPlace, eventRowDescription } from '@/apps/calendar/utils/eventMeta'
 import { weekSpanLabel } from '@/apps/calendar/utils/format'
 import { userStore } from '@/apps/calendar/stores/user'
 import { invalidateEventDensity } from '@/apps/calendar/composables/useEventDensity'
@@ -258,10 +245,10 @@ onMounted(() => {
 // Watched as one string, not as an array the getter rebuilds: a getter returning
 // a fresh array is a new value to Vue every time it runs, and it runs on any
 // change to the route — so opening an event, which only writes `?event=`, read
-// as a change of date. applyRoute then found the calendar's `currentDay` (1, in
-// every view but Day and Week) against today's date, decided they differed, and
-// sent the calendar to today — which scrolled the agenda back there from
-// wherever the reader had got to.
+// as a change of date. applyRoute then found the calendar's `currentDay` (1,
+// which was the Month view's answer at the time) against today's date, decided
+// they differed, and sent the calendar to today — which scrolled the agenda
+// back there from wherever the reader had got to.
 watch(
 	() => `${String(route.name)}|${route.params.year}|${route.params.month}|${route.params.day}`,
 	() => applyRoute(),
@@ -1126,36 +1113,9 @@ const NOTIFY_MODAL_OPTIONS = {
 					     coming is the row's own far end, from `participant`. frappe-ui
 					     hands back what it worked out itself, so this adds to it
 					     rather than deriving it twice — the same line the phone's
-					     agenda shows, from the same place. -->
+					     agenda shows, from the same helper. -->
 					<template #event-description="{ calendarEvent, date }">
-						{{
-							[eventDescription(calendarEvent), calendarDaySpan(calendarEvent, date)]
-								.filter(Boolean)
-								.join(' · ')
-						}}
-					</template>
-
-					<!-- Who the event is with, at the row's far end, as faces rather than
-					     the count the library would print: the library has a string,
-					     this has the people. Everyone invited, whatever they answered —
-					     the answers are the card's to show. The first three, and "+N"
-					     for the rest of a crowd, so a meeting of fourteen still reads as
-					     one where three faces alone would not. The stack the detail
-					     card's participants row draws, to the class — 20px faces on the
-					     row's own line, ringed in an outline colour rather than the row's
-					     ground, overlapped by 6. -->
-					<template #event-participant="{ calendarEvent }">
-						<span class="flex items-center">
-							<Avatar
-								v-for="p in eventFaces(calendarEvent)"
-								:key="p.email"
-								:image="p.user_image"
-								:label="p._name || p.email"
-								size="sm"
-								class="-ml-1.5 ring-1 ring-outline-gray-2 first:ml-0"
-							/>
-						</span>
-						<template v-if="eventMore(calendarEvent)">+{{ eventMore(calendarEvent) }}</template>
+						{{ eventRowDescription(calendarEvent, calendarDaySpan(calendarEvent, date)) }}
 					</template>
 				</Calendar>
 			</div>

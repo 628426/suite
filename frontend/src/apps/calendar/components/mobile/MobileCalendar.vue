@@ -116,6 +116,12 @@
 			     between four views — is the row above and the tab bar's sheet. Passing the
 			     slot empty is how that is said. -->
 			<template #header />
+			<!-- The agenda's rows say what the desktop's do, from the same helper:
+			     the line under the title. Who is coming is the count the calendar
+			     prints itself at the row's far end, from the event's `participant`. -->
+			<template #event-description="{ calendarEvent, date }">
+				{{ eventRowDescription(calendarEvent, calendarDaySpan(calendarEvent, date)) }}
+			</template>
 		</Calendar>
 		<!-- The date picker: the phone's own month grid, in the sheet every other
 		     switcher on this app uses. Its dots come from the events already fetched,
@@ -150,12 +156,13 @@
 <script setup lang="ts">
 import { computed, ref, useTemplateRef, watch } from 'vue'
 import { BottomSheet, Button } from 'frappe-ui'
-import { Calendar } from 'frappe-ui/experimental'
+import { Calendar, calendarDaySpan } from 'frappe-ui/experimental'
 import { ChevronDown, ChevronLeft, ChevronRight, Menu } from 'lucide-vue-next'
 
 import dayjs from '@/apps/calendar/utils/dayjs'
 import { useViewSheet } from '@/apps/calendar/composables/useViewSheet'
 import { weekSpanLabel } from '@/apps/calendar/utils/format'
+import { eventRowDescription } from '@/apps/calendar/utils/eventMeta'
 import MiniMonth from '@/apps/calendar/components/MiniMonth.vue'
 
 import type { AgendaEvent } from '@/apps/calendar/utils/agenda'

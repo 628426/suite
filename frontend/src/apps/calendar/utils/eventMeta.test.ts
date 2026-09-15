@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { eventDescription, eventFaces, eventMore, eventPeople } from './eventMeta'
+import { eventDescription, eventPeople, eventRowDescription } from './eventMeta'
 
 // The formatter calls the global `__()` the translation boot installs at app start.
 vi.stubGlobal('__', (text: string, args?: string[]) =>
@@ -27,12 +27,13 @@ describe('eventDescription', () => {
 		).toBe('Frappe Meet')
 	})
 
-	it('adds how often it repeats, as the formatter writes it', () => {
+	it('leads with how often it repeats, as the formatter writes it, then where', () => {
 		const line = eventDescription({
 			locations: [{ _name: 'Hall 2' }],
 			recurrence_rule: { frequency: 'weekly' },
 		})
-		expect(line.startsWith('Hall 2 · Every ')).toBe(true)
+		expect(line.startsWith('Every ')).toBe(true)
+		expect(line.endsWith(' · Hall 2')).toBe(true)
 	})
 
 	// The count stands at the row's far end, not on this line.
@@ -45,6 +46,19 @@ describe('eventDescription', () => {
 				})),
 			}),
 		).toBe('Hall 2')
+	})
+})
+
+describe('eventRowDescription', () => {
+	it('puts the day of a stay after where the event is', () => {
+		expect(eventRowDescription({ locations: [{ _name: 'Hall 2' }] }, 'Day 2/3')).toBe(
+			'Hall 2 · Day 2/3',
+		)
+	})
+
+	it('is just the day span on an event with nowhere to be, and nothing without one', () => {
+		expect(eventRowDescription({}, 'Day 2/3')).toBe('Day 2/3')
+		expect(eventRowDescription({}, null)).toBe('')
 	})
 })
 
@@ -68,37 +82,5 @@ describe('eventPeople', () => {
 				],
 			}),
 		).toBe('3 people')
-	})
-})
-
-describe('eventFaces', () => {
-	const one = (email: string, status = 'ACCEPTED') => ({ email, participation_status: status })
-
-	it('leads with the organizer and stops at three', () => {
-		const faces = eventFaces({
-			organizer: 'mailto:host@x.io',
-			participants: [one('a@x.io'), one('b@x.io'), one('host@x.io'), one('c@x.io')],
-		})
-		expect(faces.map((p) => p.email)).toEqual(['host@x.io', 'a@x.io', 'b@x.io'])
-	})
-
-	it('shows a face whatever the answer', () => {
-		const faces = eventFaces({
-			organizer: 'host@x.io',
-			participants: [one('host@x.io', 'DECLINED'), one('a@x.io', 'NEEDS-ACTION')],
-		})
-		expect(faces.map((p) => p.email)).toEqual(['host@x.io', 'a@x.io'])
-	})
-})
-
-describe('eventMore', () => {
-	const of = (n: number) => ({
-		participants: Array.from({ length: n }, (_, i) => ({ email: `${i}@x.io` })),
-	})
-
-	it('counts only past the faces on show', () => {
-		expect(eventMore(of(2))).toBe(0)
-		expect(eventMore(of(3))).toBe(0)
-		expect(eventMore(of(14))).toBe(11)
 	})
 })
