@@ -37,14 +37,14 @@ const { calendars, visibleCalendars, events, selectedEvent } = defineProps<{
 	view?: 'Month' | 'Week' | 'Day'
 	/** Today's events: `fromDate`/`toDate` in the viewer's zone, a palette `color`. */
 	events?: any[]
-	/** The event whose detail panel is open, so its row reads as active. */
+	/** The open event, so its row reads as active. */
 	selectedEvent?: any
 }>()
 
 const emit = defineEmits<{
 	'update:visibleCalendars': [name: string]
 	selectDate: [date: Date]
-	selectEvent: [event: any]
+	selectEvent: [event: any, e: MouseEvent]
 }>()
 
 
@@ -235,7 +235,7 @@ const menuItems = computed(() => [
 					:is-collapsed="isSidebarCollapsed"
 					:is-open
 					:event-color="eventDotColor"
-					@select="(event) => emit('selectEvent', event)"
+					@select="(event, e) => emit('selectEvent', event, e)"
 				/>
 				<SidebarCollapseToggle />
 			</div>

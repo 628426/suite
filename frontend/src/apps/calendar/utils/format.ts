@@ -135,7 +135,7 @@ export interface RecurrenceRule {
  * opens them on a tap, so anything the sentence leaves out is a field whose value
  * cannot be read without opening it.
  *
- * The detail panel has a formatter of its own (EventDetailSidebar's formatAlert): it
+ * The detail card has a formatter of its own (EventDetail's formatAlert): it
  * reads the shape the server sends — an ISO offset, or a `when` timestamp — where this
  * reads the shape the form edits, which EventModal's parseAlert produces.
  */

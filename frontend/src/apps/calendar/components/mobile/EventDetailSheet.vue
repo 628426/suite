@@ -8,10 +8,10 @@
 	     What it draws is the last event it was given, not the one it is being
 	     given: closing clears the event — that is what closes the sheet — and the
 	     sheet then had nothing to draw for the length of its own slide, so it went
-	     blank on the way down. Holding the last one keeps the panel whole until it
+	     blank on the way down. Holding the last one keeps the card whole until it
 	     is gone, and the next open replaces it. -->
 	<BottomSheet :open="!!calendarEvent" @update:open="(open) => !open && emit('close')">
-		<EventDetailSidebar
+		<EventDetail
 			v-if="shown"
 			:key="shown.id + (shown.recurrence_id ?? '')"
 			:calendar-event="shown"
@@ -28,7 +28,7 @@
 import { ref, watch } from 'vue'
 import { BottomSheet } from 'frappe-ui'
 
-import EventDetailSidebar from '@/apps/calendar/components/EventDetailSidebar.vue'
+import EventDetail from '@/apps/calendar/components/EventDetail.vue'
 
 const props = defineProps<{ calendarEvent: any | null }>()
 

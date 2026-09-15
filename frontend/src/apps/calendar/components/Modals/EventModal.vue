@@ -369,7 +369,7 @@ const hasMeetLink = (ev: any) =>
 // Prefer the sanitized same-origin path, but fall back to the raw URL so events
 // whose Meet link lives on another origin (e.g. created against a different site
 // URL) still get a Join affordance — the same link is already clickable in the
-// detail sidebar's description.
+// detail card's description.
 const meetUrl = computed(() => {
 	const href =
 		event.links?.find((item: any) => item?.href?.includes('/meet/'))?.href ||

@@ -33,11 +33,13 @@
 import { useEventListener } from '@vueuse/core'
 import { PopoverAnchor, PopoverContent, PopoverPortal, PopoverRoot } from 'reka-ui'
 
-const { open, anchor, side } = defineProps<{
+const { open, anchor, side, anchorMoves = false } = defineProps<{
 	open: boolean
 	/** The element the card hangs off. reka follows it when it changes. */
 	anchor: Element | null
 	side: 'top' | 'right' | 'bottom' | 'left'
+	/** Whether the anchor can be dragged — a pill in the grid can, a row in the rail cannot. */
+	anchorMoves?: boolean
 }>()
 
 const emit = defineEmits<{ close: [] }>()
@@ -55,9 +57,10 @@ const onInteractOutside = (event: Event) => {
 // pill followed by a move, which is where a press stops being a click, so a
 // click that does not move still toggles. A resize starts with the same press
 // on the pill's handle and goes the same way. The month's pills move by the
-// browser's own drag and drop, which announces itself.
+// browser's own drag and drop, which announces itself. Only where the anchor
+// can move at all: a press that slides on a row of the rail is nothing.
 const onAnchorMouseDown = () => {
-	if (!open) return
+	if (!open || !anchorMoves) return
 	const onMove = () => {
 		window.removeEventListener('mouseup', onUp)
 		emit('close')
@@ -68,5 +71,5 @@ const onAnchorMouseDown = () => {
 }
 
 useEventListener(() => anchor, 'mousedown', onAnchorMouseDown)
-useEventListener(() => anchor, 'dragstart', () => open && emit('close'))
+useEventListener(() => anchor, 'dragstart', () => open && anchorMoves && emit('close'))
 </script>

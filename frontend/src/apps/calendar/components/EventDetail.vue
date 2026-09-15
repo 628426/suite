@@ -50,21 +50,20 @@ import EventParticipantList from '@/apps/calendar/components/EventParticipantLis
 import RecurringScopeModal from '@/apps/calendar/components/Modals/RecurringScopeModal.vue'
 import LinkifiedText from '@/components/LinkifiedText.vue'
 
-const { calendarEvent, variant = 'panel' } = defineProps<{
+const { calendarEvent, variant = 'popover' } = defineProps<{
 	calendarEvent: any
 	/**
-	 * Where the panel is hosted. `panel` is the desktop column beside the
-	 * calendar — its own width, its own border, its own scroll. `sheet` is the
-	 * phone's bottom sheet, which owns the width and the border but not the scroll:
-	 * the sheet would scroll the panel whole, carrying the RSVP off the bottom the
-	 * moment the participants list was expanded. Bounded here instead — to the sheet's
-	 * own 90dvh — so the details scroll inside it and the answer stays where a thumb
-	 * left it. `popover` is the card a pill in the grid opens beside itself: the
-	 * panel's width, the popover shell's surface and border, and a height bounded
-	 * by the room reka reports beside the pill so the details scroll inside the
-	 * card rather than the card running off the screen.
+	 * Where the card is hosted. `popover` is the desktop's card, hung on the pill
+	 * or row that opened it: its own width, the popover shell's surface and
+	 * border, and a height bounded by the room reka reports beside the anchor so
+	 * the details scroll inside the card rather than the card running off the
+	 * screen. `sheet` is the phone's bottom sheet, which owns the width and the
+	 * border but not the scroll: the sheet would scroll the card whole, carrying
+	 * the RSVP off the bottom the moment the participants list was expanded.
+	 * Bounded here instead — to the sheet's own 90dvh — so the details scroll
+	 * inside it and the answer stays where a thumb left it.
 	 */
-	variant?: 'panel' | 'sheet' | 'popover'
+	variant?: 'popover' | 'sheet'
 }>()
 const router = useRouter()
 
@@ -182,18 +181,18 @@ const eventCalendar = computed(
  * else.
  *
  * The calendar app hands each calendar a palette colour by position and paints
- * its pills, rows and sidebar dot with it — so the panel has to read that, not
+ * its pills, rows and sidebar dot with it — so the card has to read that, not
  * the colour the server happens to carry, which had the same event green in the
- * list and blue in the panel beside it.
+ * list and blue in the card beside it.
  *
- * Mail opens this panel on events it never transformed, which have no palette
+ * Mail opens this card on events it never transformed, which have no palette
  * colour of their own; those still fall back to the calendar's own.
  */
 const dotColor = computed(() =>
 	eventColor((calendarEvent.color as string) || eventCalendar.value?.color),
 )
 
-// The organizer beats the viewer's own address (redundant in their own panel);
+// The organizer beats the viewer's own address (redundant in their own card);
 // for self-organized events they coincide. Fall back to the account's address
 // (from participantIdentities — the calendar id only carries an opaque JMAP account id),
 // then the calendar's display name.
@@ -504,9 +503,7 @@ const openUrl = (location: string) => {
 		:class="
 			variant === 'sheet'
 				? 'relative flex max-h-[90dvh] w-full flex-col overflow-hidden text-left'
-				: variant === 'popover'
-					? 'relative flex max-h-[min(var(--reka-popover-content-available-height),40rem)] w-[352px] flex-col overflow-hidden text-left outline-none'
-					: 'bg-surface-base relative flex h-full w-[352px] shrink-0 flex-col overflow-hidden border-l text-left'
+				: 'relative flex max-h-[min(var(--reka-popover-content-available-height),40rem)] w-[352px] flex-col overflow-hidden text-left outline-none'
 		"
 	>
 		<!-- The two pages, one in the flow at a time, the other sliding through:
@@ -514,7 +511,7 @@ const openUrl = (location: string) => {
 		     left; back, the reverse. The leaving page is lifted out of the flow for
 		     the slide so the arriving one takes its place at once, and the root
 		     clips the pair — see the style block. Only the sheet turns pages; the
-		     panel stays on the event, and the wrapper is inert there.
+		     card stays on the event, and the wrapper is inert there.
 
 		     The sheet's bottom padding, which clears the home indicator, is on
 		     each page rather than on the root: a lifted page is sized to the root's
@@ -529,10 +526,9 @@ const openUrl = (location: string) => {
 				:class="variant === 'sheet' ? 'pb-[calc(env(safe-area-inset-bottom)+0.5rem)]' : 'flex-1'"
 			>
 				<!-- Header -->
-				<!-- h-12 matches the mail header bar's 48px, so when mail hosts this panel the
-				     two headers read as one row. The event's name leads it, where a name belongs;
-				     the row is a fixed height, so a long one truncates rather than growing it and
-				     the tooltip carries the whole of it. -->
+				<!-- h-12, the height of the app's header bars. The event's name leads it, where
+				     a name belongs; the row is a fixed height, so a long one truncates rather
+				     than growing it and the tooltip carries the whole of it. -->
 				<div class="flex h-12 items-center gap-3 px-4.5">
 					<!-- The calendar's colour before the name it belongs to: it is the one mark
 					     shared with the pills in the grid, so it answers "which of these is the one
@@ -591,16 +587,13 @@ const openUrl = (location: string) => {
 				</div>
 
 				<!-- When it is and whose calendar it is on — outside the scroll, under the name
-				     in the header: what the panel is about stays put while what it says about it
+				     in the header: what the card is about stays put while what it says about it
 				     moves.
 
 				     No negative top margin: it was there to pull a title tight under the header,
-				     and the title is in the header now. pt-px is the last pixel of the 49 this
-				     block has to be — two 15px lines where there used to be a 24px title and a
-				     15px date leaves 1 + 15 + 6 + 15 + 12, and the 1 matters: header (48) + block
-				     (49) + divider is what the mail header bar and the screener banner under it
-				     come to (49px each), so the divider lands on the banner's border when mail
-				     hosts this panel rather than a pixel under it. -->
+				     and the title is in the header now. The block is a fixed 49px — two 15px
+				     lines where there used to be a 24px title and a 15px date — and the numbers
+				     below are solved against that. -->
 				<div class="-mt-0.5 flex shrink-0 flex-col px-4.5 pb-[15px]">
 					<!-- The three numbers are solved together, not chosen. text-md is 15px at 1.15,
 					     so the title's line box is 17.25 and the header's 48 leaves 15.4 under it —
@@ -663,7 +656,7 @@ const openUrl = (location: string) => {
 							</div>
 							<!-- The subtle Button, as the participants page's email action is, so
 							     the two full-width actions the sheet offers are one button: md in the
-							     sheet, 32px under a thumb, and sm in the panel under a pointer. -->
+							     sheet, 32px under a thumb, and sm in the card under a pointer. -->
 							<div class="px-4.5 py-2">
 								<Button
 									variant="subtle"
@@ -740,7 +733,7 @@ const openUrl = (location: string) => {
 
 					<!-- No rule above the participants in the sheet: there the section is one
 					     row, and a row ruled off from the rows above it read as a section of
-					     its own with nothing in it. The panel keeps the rule over its list. -->
+					     its own with nothing in it. The card keeps the rule over its list. -->
 					<div v-if="variant !== 'sheet'" class="border-t" />
 
 					<!-- Participants: the section's own y padding matches the header row's
@@ -836,7 +829,7 @@ const openUrl = (location: string) => {
 						<div class="border-t" />
 
 						<!-- Description: no label — the icon in the gutter with the body on
-						     the text axis says it, like the panel's other icon rows. -->
+						     the text axis says it, like the card's other icon rows. -->
 						<div class="flex items-start gap-2.5 px-4.5 py-4">
 							<Text class="icon text-ink-gray-5 mt-0.5 size-4 shrink-0" />
 							<div class="text-ink-gray-7 min-w-0 flex-1 text-sm leading-normal">
@@ -880,7 +873,7 @@ const openUrl = (location: string) => {
 		     header keeps the event header's height and gutter, so the swap reads
 		     as a page turned rather than a sheet replaced; the back chevron sits
 		     where the event's colour dot did. The list steps by 12 rather than
-		     the panel's 8, since a thumb lands on a row where a pointer lands on
+		     the card's 8, since a thumb lands on a row where a pointer lands on
 		     a face. -->
 			<div
 				v-else
@@ -914,7 +907,7 @@ const openUrl = (location: string) => {
 				<!-- Outside the scroll, the way the event page pins its RSVP: the one
 				     action the list has stays under the thumb however long the list is.
 				     No rule over it and none under the header: the other sheets draw
-				     neither, and a rule the panel needs to mark its pinned blocks reads
+				     neither, and a rule the card needs to mark its pinned blocks reads
 				     as a frame in a sheet. The page's own bottom padding clears the home
 				     indicator, so the block carries the pb-1 the RSVP does. -->
 				<template v-if="participantEmails.length">
