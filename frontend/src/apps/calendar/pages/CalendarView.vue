@@ -25,7 +25,7 @@ import { userStore } from '@/apps/calendar/stores/user'
 import { invalidateEventDensity } from '@/apps/calendar/composables/useEventDensity'
 import { rememberCalendarView } from '@/apps/calendar/utils/lastView'
 import AppSidebar from '@/apps/calendar/components/AppSidebar.vue'
-import EventDetailSidebar from '@/apps/calendar/components/EventDetailSidebar.vue'
+import EventDetail from '@/apps/calendar/components/EventDetail.vue'
 import EventPopover from '@/apps/calendar/components/EventPopover.vue'
 import EventModal from '@/apps/calendar/components/Modals/EventModal.vue'
 import RecurringScopeModal from '@/apps/calendar/components/Modals/RecurringScopeModal.vue'
@@ -1143,7 +1143,7 @@ const NOTIFY_MODAL_OPTIONS = {
 				:side="cardSide"
 				@close="closeEventDetail"
 			>
-				<EventDetailSidebar
+				<EventDetail
 					v-if="openEvent"
 					:key="openEvent.id + (openEvent.recurrence_id ?? '')"
 					variant="popover"

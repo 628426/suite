@@ -25,7 +25,7 @@
 					:side="cardAnchor?.side ?? 'right'"
 					@close="selectedEvent = null"
 				>
-					<EventDetailSidebar
+					<EventDetail
 						v-if="selectedEvent"
 						:key="selectedEvent.id + (selectedEvent.recurrence_id ?? '')"
 						variant="popover"
@@ -57,7 +57,7 @@ import { provide, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 
 import dayjs from '@/apps/calendar/utils/dayjs'
-import EventDetailSidebar from '@/apps/calendar/components/EventDetailSidebar.vue'
+import EventDetail from '@/apps/calendar/components/EventDetail.vue'
 import EventPopover from '@/apps/calendar/components/EventPopover.vue'
 import { eventDayRoute, useUpcomingEvents } from '@/apps/mail/composables/useUpcomingEvents'
 import { useComposeMail, useListReload, useScreenSize } from '@/apps/mail/utils/composables'
@@ -78,7 +78,7 @@ const { requestListReload } = useListReload()
 const router = useRouter()
 const { events, selectedEvent, cardAnchor } = useUpcomingEvents()
 
-// EventDetailSidebar is a calendar component and expects the calendar layout's
+// EventDetail is a calendar component and expects the calendar layout's
 // $dayjs injection (the instance with duration/tz/utc plugins installed).
 provide('$dayjs', dayjs)
 
