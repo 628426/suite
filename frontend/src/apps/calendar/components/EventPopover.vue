@@ -8,8 +8,15 @@
 		     element the anchor renders is only the place it is registered from. -->
 		<PopoverAnchor :reference="anchor ?? undefined" class="hidden" />
 		<PopoverPortal>
+			<!-- z-50, the layer frappe-ui's dialogs sit on, not the 100 its own
+			     popover takes. The library pins dialogs at 50 and its floating
+			     family — menus, popovers — at 100 so they can open above a dialog.
+			     This card is on the other side of that: it raises dialogs (delete's
+			     confirmation, an RSVP's scope), and a dialog portaled after it on
+			     the same layer is on top, where at 100 the card stood over the
+			     question it had just asked. Its own menu still clears it at 100. -->
 			<PopoverContent
-				class="z-[100]"
+				class="z-50"
 				:side="side"
 				align="center"
 				:side-offset="4"
