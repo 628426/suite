@@ -35,7 +35,7 @@ const { calendars, visibleCalendars, events, selectedEvent } = defineProps<{
 	/** The day it is on and the view it is in, for the mini month's selection. */
 	day?: number
 	view?: 'Month' | 'Week' | 'Day'
-	/** The calendar's own events: `fromDate`/`toDate` in the viewer's zone, a palette `color`. */
+	/** Today's events: `fromDate`/`toDate` in the viewer's zone, a palette `color`. */
 	events?: any[]
 	/** The event whose detail panel is open, so its row reads as active. */
 	selectedEvent?: any
@@ -64,6 +64,8 @@ const calendarLabel = (calendar: any) => {
 }
 
 // --- Upcoming events: what is left of today, like mail's sidebar shows ---
+// The events handed over are today's already; this drops what is over, cancelled
+// or declined, and puts the rest in order.
 
 const now = useNow({ interval: 30_000 })
 

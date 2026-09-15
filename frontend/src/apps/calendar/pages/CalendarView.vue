@@ -402,11 +402,41 @@ const events = createResource({
 	onError: (error) => raiseToast(error.message, 'error'),
 })
 
+// Today's events, for the sidebar's upcoming list. Its own fetch rather than a
+// filter over the grid's: the grid's window follows the month in view, and paged
+// a couple of months from today it no longer holds today, so a list drawn from it
+// went blank. Today is today whatever month is on screen. Asked for at once —
+// the sidebar is on screen from the start, and the same shape as the grid's rows
+// so the list and the panel it opens read it the same way.
+const todayEvents = createResource({
+	url: 'suite.calendar.api.get_calendar_events',
+	makeParams: () => {
+		const start = dayjs().startOf('day')
+		return {
+			account: store.accountId,
+			from_date: start.utc().format('YYYY-MM-DD[T]HH:mm:ss[Z]'),
+			to_date: start.endOf('day').utc().format('YYYY-MM-DD[T]HH:mm:ss[Z]'),
+			time_zone: dayjs.tz.guess(),
+		}
+	},
+	auto: true,
+	transform: (data) => data.map(transformEvent),
+	onError: (error) => raiseToast(error.message, 'error'),
+})
+
+// Asked again as the date turns: a list of today's events fetched yesterday is
+// yesterday's, and the clock the list already runs on says when.
+watch(
+	() => dayjs(now.value).format('YYYY-MM-DD'),
+	() => todayEvents.reload(),
+)
+
 // The events themselves changed, as opposed to the window over them moving. The
 // sidebar's mini month draws from its own density call, so it has no way to hear
 // about a save or a delete unless it is told to forget what it has.
 const reloadEvents = () => {
 	events.reload()
+	todayEvents.reload()
 	invalidateEventDensity()
 }
 
@@ -438,6 +468,10 @@ const onVisibleCalendar = (event) =>
 
 const visibleEvents = computed(
 	() => events.data?.filter(onVisibleCalendar).map(withCalendarColor) || [],
+)
+
+const visibleTodayEvents = computed(
+	() => todayEvents.data?.filter(onVisibleCalendar).map(withCalendarColor) || [],
 )
 
 const showEditEvent = ref(false)
@@ -662,7 +696,11 @@ const peeked = ref<{ id: string; recurrence?: string } | null>(null)
 
 const peekedEvent = computed(() => {
 	if (!peeked.value) return null
-	const linked = findLinkedEvent(events.data, peeked.value.id, peeked.value.recurrence)
+	const { id, recurrence } = peeked.value
+	// Today's list first, since that is where the rows come from, and it holds
+	// today when the grid's window has been paged away from it.
+	const linked =
+		findLinkedEvent(todayEvents.data, id, recurrence) ?? findLinkedEvent(events.data, id, recurrence)
 	return linked && withCalendarColor(linked)
 })
 
@@ -1039,7 +1077,7 @@ const NOTIFY_MODAL_OPTIONS = {
 				:year="calendarRef?.currentYear"
 				:day="calendarRef?.currentDay"
 				:view="calendarRef?.activeView"
-				:events="visibleEvents"
+				:events="visibleTodayEvents"
 				:selected-event="peekedEvent ?? selectedCalendarEvent"
 				@update:visible-calendars="
 					(name) =>
