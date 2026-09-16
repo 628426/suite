@@ -14,20 +14,25 @@
 		     hamburger opens the view switcher, where mail's opens its folders:
 		     which list you are looking at is the same question in both.
 
-		     The rule under it is the bar's own, drawn here in every view rather
-		     than left to whichever view happened to draw one at its top: the day
-		     grid did and the others did not, so the bar had a bottom edge on one
-		     screen in four. `noBorder` tells the views to draw none of their own
-		     there. -->
-		<div class="flex h-14 items-center gap-1 border-b border-outline-gray-1 px-1">
+		     The rule under it is the bar's own, drawn where the bar meets content:
+		     the day and the agenda, whose views draw none at their top (`noBorder`
+		     sees to that). The week and the month open with a row of weekday
+		     names, which is the bar's second line — a title, then its dates, then
+		     one rule under both, which the grid already draws along its top. A
+		     rule between the title and the dates as well put the dates between
+		     two lines, and they read as a band of their own. -->
+		<div
+			class="flex h-14 items-center gap-1 border-outline-gray-1 px-1"
+			:class="{ 'border-b': !isMonth && !isWeek }"
+		>
 			<button
 				:aria-label="__('Switch view')"
 				class="text-ink-gray-6 flex h-10 w-10 shrink-0 items-center justify-center rounded-full"
 				@click="openViewSheet"
 			>
-				<!-- 24px at stroke 2, as mail's is: three strokes on their own went
-				     thin against the title beside them. -->
-				<Menu :size="24" class="[stroke-width:2]" />
+				<!-- 20px at the 1.5 the app draws its icons at, as mail's is: the
+				     title's own size, so glyph and word stand the same height. -->
+				<Menu :size="20" />
 			</button>
 			<!-- The title is also the way to a date: the month card is a tap on it
 			     away, which is the one navigation the arrows beside it cannot do — they
