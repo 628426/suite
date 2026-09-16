@@ -55,7 +55,12 @@ const toGridEvent = (row: DensityRow, color: (calendar: string) => string): Grid
 // from what is in hand instead of asking again. Module-scoped rather than per
 // component: the cache has to be markable from outside when an event is saved
 // or deleted, and the card that draws it is nowhere near the code that does that.
-const byMonth = ref<Record<string, GridEvent[]>>({})
+//
+// The rows as the server sent them, not the ticks drawn from them: a colour is
+// looked up when the ticks are read, so density that lands before the calendars
+// have — coloured by the palette's first entry, for want of anything better —
+// takes its calendar's own colour the moment the calendars arrive.
+const byMonth = ref<Record<string, DensityRow[]>>({})
 
 // Months whose rows are known to be out of date but are still worth drawing.
 // A month is stale, not dropped, so the card keeps the ticks it has while the
@@ -106,7 +111,7 @@ export const useEventDensity = (
 		if (byMonth.value[wanted] && !stale.value[wanted]) return
 		density.submit(undefined, {
 			onSuccess: (rows: DensityRow[]) => {
-				byMonth.value[wanted] = (rows ?? []).map((row) => toGridEvent(row, color))
+				byMonth.value[wanted] = rows ?? []
 				delete stale.value[wanted]
 			},
 		})
@@ -122,5 +127,7 @@ export const useEventDensity = (
 		(isStale) => isStale && load(),
 	)
 
-	return { events: computed(() => byMonth.value[key.value] ?? []) }
+	return {
+		events: computed(() => (byMonth.value[key.value] ?? []).map((row) => toGridEvent(row, color))),
+	}
 }

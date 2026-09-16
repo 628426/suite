@@ -62,11 +62,13 @@ def _events_in_window(account: str, from_date: str, to_date: str, time_zone: str
     total = 0
 
     while len(events) < MAX_EVENTS_IN_WINDOW:
+        # The last page asks for what is left under the ceiling, not a whole one:
+        # a full page on top of 4,995 is a thousand events past the bound.
         page, total = fetch_calendar_events(
             account,
             query,
             position=position,
-            limit=EVENT_PAGE_SIZE,
+            limit=min(EVENT_PAGE_SIZE, MAX_EVENTS_IN_WINDOW - len(events)),
             time_zone=time_zone,
             expand_recurrences=True,
         )

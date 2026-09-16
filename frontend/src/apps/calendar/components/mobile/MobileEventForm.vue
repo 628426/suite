@@ -426,6 +426,7 @@ import meetLogo from '@/assets/app-logos/meet.png'
 import dayjs from '@/apps/calendar/utils/dayjs'
 import { formatAlertPhrase, getRepeatMessage } from '@/apps/calendar/utils/format'
 import { userStore } from '@/apps/calendar/stores/user'
+import { requestAlertPermission } from '@/utils/calendarAlert'
 import { useKeyboardInsets } from '@/composables/useKeyboardInsets'
 import AdaptiveDropdown from '@/components/AdaptiveDropdown.vue'
 import ParticipantSelector from '@/apps/calendar/components/ParticipantSelector.vue'
@@ -729,6 +730,15 @@ const addAlert = () => {
 	emit('setAlerts', [...event.alerts, event.isAllDay ? absoluteAlert() : offsetAlert(10, 'minutes')])
 	editingAlert.value = index
 }
+
+// Adding a reminder is the user saying they want to be told: the one moment to
+// ask the browser for system notifications, while the tap still counts. The
+// desktop's list asks at the same moment; a Display alert saved without asking
+// could never show.
+watch(
+	() => event.alerts.length,
+	(count: number, previous: number) => count > previous && requestAlertPermission(),
+)
 
 const removeAlert = (index: number) =>
 	emit(

@@ -312,21 +312,18 @@ const agendaTitle = computed(() => agenda.value?.currentMonthYear || title.value
 const dayTitle = computed(() => dayjs(props.selected).format('dddd, D MMM'))
 
 /**
- * A step back or on, by whatever the view is showing: a month, a week, a day.
+ * A step back or on, by whatever the view is showing: a month, a week, a day —
+ * and a month for the list, which is anchored on one and shows three.
  *
- * The three of them step by moving the date this view is on, not by asking the
- * Calendar to increment itself — the date is what the route, the title and the fetch window all
- * read, and a Calendar that walked off on its own would leave the three of them
- * behind. The list is the other way round: it is scrolled rather than dated, so its
- * own increment is what moves it, and its title comes back from the same place.
+ * All four step by moving the date this view is on, not by asking the Calendar
+ * to increment itself — the date is what the route, the title and the fetch
+ * window all read, and a Calendar that walked off on its own left the three of
+ * them behind: the list paged past the window fetched for the day it opened on
+ * and drew its months empty.
  */
 const step = (delta: number) => {
-	const unit = isMonth.value ? 'month' : isWeek.value ? 'week' : isDay.value ? 'day' : null
-	if (unit) {
-		emit('selectDate', dayjs(props.selected).add(delta, unit).format('YYYY-MM-DD'))
-		return
-	}
-	delta < 0 ? agenda.value?.decrement() : agenda.value?.increment()
+	const unit = isWeek.value ? 'week' : isDay.value ? 'day' : 'month'
+	emit('selectDate', dayjs(props.selected).add(delta, unit).format('YYYY-MM-DD'))
 }
 
 // This view owns the date; the library's follows it. Immediate, because a Calendar
