@@ -989,14 +989,21 @@ const recurringScopeModalProps = computed(() => ({
 										{{ __('Starts') }}
 									</label>
 									<div class="flex gap-2">
-										<FormControl v-model="event.startDate" type="date" class="w-full" />
+										<FormControl
+											v-model="event.startDate"
+											type="date"
+											format="MMM D, YYYY"
+											:placeholder="__('Select date')"
+											class="w-full"
+										/>
 										<FormControl
 											v-if="!event.isAllDay"
 											v-model="event.startTime"
 											type="time"
 											:interval="15"
 											format="h:mm A"
-											class="w-full"
+											:placeholder="__('Select time')"
+											class="!w-28 shrink-0"
 										/>
 									</div>
 								</div>
@@ -1005,14 +1012,21 @@ const recurringScopeModalProps = computed(() => ({
 										{{ __('Ends') }}
 									</label>
 									<div class="flex gap-2">
-										<FormControl v-model="event.endDate" type="date" class="w-full" />
+										<FormControl
+											v-model="event.endDate"
+											type="date"
+											format="MMM D, YYYY"
+											:placeholder="__('Select date')"
+											class="w-full"
+										/>
 										<FormControl
 											v-if="!event.isAllDay"
 											v-model="event.endTime"
 											type="time"
 											:interval="15"
 											format="h:mm A"
-											class="w-full"
+											:placeholder="__('Select time')"
+											class="!w-28 shrink-0"
 										/>
 									</div>
 								</div>
@@ -1044,7 +1058,7 @@ const recurringScopeModalProps = computed(() => ({
 									</div>
 									<div class="truncate text-xs text-ink-gray-5">{{ meetLinkDisplay }}</div>
 								</div>
-								<Button variant="ghost" :title="__('Copy Frappe Meet link')" @click="copyMeetLink">
+								<Button variant="ghost" :tooltip="__('Copy Frappe Meet link')" @click="copyMeetLink">
 									<template #icon><Copy :size="14" class="icon text-ink-gray-5" /></template>
 								</Button>
 								<Button :label="__('Join')" @click="joinMeet" />
