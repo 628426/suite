@@ -211,7 +211,6 @@ function createMockMediasoupManager(): MediasoupManager {
 			});
 			return result;
 		}),
-		assertConsumerAccess: vi.fn(),
 		closeConsumer: vi.fn().mockResolvedValue(undefined),
 		requestConsumerKeyFrame: vi.fn().mockResolvedValue(true),
 		updateConsumerPreferences: vi.fn().mockResolvedValue({ paused: false }),
@@ -270,9 +269,9 @@ export function createManager(
 		allowPlainTransport: false,
 		bypassRateLimits: false,
 	},
+	mediasoup: MediasoupManager = createMockMediasoupManager(),
 ): ManagerHarness {
 	const io = createMockServer();
-	const mediasoup = createMockMediasoupManager();
 	const authManager = createMockAuthManager();
 	const roster = new E2eeRosterStore(new InMemoryRosterPersistence());
 	const telemetry = new Telemetry();

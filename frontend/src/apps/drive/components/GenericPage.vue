@@ -50,6 +50,7 @@ import {
   isVirtual,
   isManaged,
   isAttachmentRef,
+  isModKey,
 } from '@/apps/drive/utils/files'
 import {
   toggleFav,
@@ -89,6 +90,7 @@ import { getFileLink } from '@/apps/drive/ui/drive/js/utils'
 import LucideClock from '~icons/lucide/clock'
 import LucideDownload from '~icons/lucide/download'
 import LucideExternalLink from '~icons/lucide/external-link'
+import LucideSquareArrowOutUpRight from '~icons/lucide/square-arrow-out-up-right'
 import LucideEye from '~icons/lucide/eye'
 import LucideInfo from '~icons/lucide/info'
 import LucideLink2 from '~icons/lucide/link-2'
@@ -221,6 +223,12 @@ const isTyping = (e) =>
   e.target.tagName === 'INPUT' ||
   e.target.tagName === 'TEXTAREA'
 
+// Links keep their own confirm flow and virtual nodes have no standalone
+// page, so neither can be opened in a new tab. Shared by the context-menu
+// action and the mod+Enter shortcut.
+const canOpenInNewTab = (entity) =>
+  !isVirtual(entity) && entity.file_type !== 'Link'
+
 onKeyDown('a', (e) => {
   if (isTyping(e)) return
   if (e.metaKey || e.ctrlKey) {
@@ -235,6 +243,16 @@ onKeyDown('Backspace', (e) => {
 onKeyDown('m', (e) => {
   if (isTyping(e)) return
   if (e.ctrlKey) emitter.emit('move')
+})
+onKeyDown('Enter', (e) => {
+  if (isTyping(e)) return
+  if (document.querySelector('.dialog-content[data-state="open"]')) return
+  if (route.name === 'drive-Trash' || !isModKey(e)) return
+  if (selectedEntitities.value.length !== 1) return
+  const [entity] = selectedEntitities.value
+  if (!canOpenInNewTab(entity)) return
+  e.preventDefault()
+  openEntity(entity, true)
 })
 onKeyDown('Escape', (e) => {
   if (isTyping(e)) return
@@ -529,6 +547,12 @@ const actionItems = computed(() => {
         icon: LucideExternalLink,
         action: ([entity]) => openEntity(entity),
         isEnabled: (e) => e.file_type === 'Link',
+      },
+      {
+        label: __('Open in new tab'),
+        icon: LucideSquareArrowOutUpRight,
+        action: ([entity]) => openEntity(entity, true),
+        isEnabled: canOpenInNewTab,
       },
       {
         label: __('Show Info'),

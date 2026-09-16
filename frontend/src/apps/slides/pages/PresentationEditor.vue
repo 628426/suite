@@ -20,6 +20,32 @@
 
 			<Toolbar v-if="!inReadonlyMode && presentationDoc" />
 
+			<div
+				v-if="lockedElsewhere"
+				class="absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-4 bg-surface-elevation-1 p-0.5 shadow-md"
+			>
+				<div class="flex items-center gap-2 p-2">
+					<LucideLock class="size-4 stroke-[1.5] text-ink-gray-7" />
+					<span class="text-base text-ink-gray-7">Editing in another tab</span>
+				</div>
+				<div class="h-5 w-px bg-surface-gray-4" />
+				<Button variant="ghost" @click="takeOverEditing">Edit here</Button>
+			</div>
+
+			<div
+				v-if="saveRefused && !lockedElsewhere"
+				class="absolute bottom-10 left-1/2 z-10 flex -translate-x-1/2 items-center gap-1 rounded-4 bg-surface-elevation-1 p-0.5 shadow-md"
+			>
+				<div class="flex items-center gap-2 p-2">
+					<LucideCloudOff class="size-4 stroke-[1.5] text-ink-gray-7" />
+					<span class="text-base text-ink-gray-7">
+						Changed elsewhere. Reloading discards your unsaved edits.
+					</span>
+				</div>
+				<div class="h-5 w-px bg-surface-gray-4" />
+				<Button variant="ghost" @click="reloadPresentation()">Reload</Button>
+			</div>
+
 			<PropertiesPanel v-if="!inReadonlyMode" class="absolute bottom-0 right-0 top-0" />
 		</div>
 	</div>
@@ -56,6 +82,7 @@ import {
 	watch,
 	onMounted,
 	onActivated,
+	onDeactivated,
 	onBeforeUnmount,
 	provide,
 	nextTick,
@@ -63,7 +90,7 @@ import {
 } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 
-import { call, toast, usePageMeta, KeyboardShortcutsDialog } from 'frappe-ui'
+import { call, toast, usePageMeta, Button, KeyboardShortcutsDialog } from 'frappe-ui'
 import { appPageMeta } from '@/utils/documentTitle'
 
 import ExportView from '@/apps/slides/pages/ExportView.vue'
@@ -80,14 +107,18 @@ import ThumbnailCapture from '@/apps/slides/components/ThumbnailCapture.vue'
 import {
 	presentationId,
 	initPresentationDoc,
+	startLoad,
+	isLatestLoad,
 	presentationDoc,
 	templateList,
 	templateListResource,
+	viewOnly,
 	inReadonlyMode,
 	createPresentationResource,
 	duplicatePresentation,
 	confirmDeletePresentation,
 	presentationTheme,
+	adoptServerVersion,
 	resetEditorState,
 	pageTitle,
 } from '@/apps/slides/stores/presentation'
@@ -101,7 +132,13 @@ import {
 	addEmptySlide,
 	handleInsertSlide,
 } from '@/apps/slides/stores/slide'
-import { resetFocus, focusElementId } from '@/apps/slides/stores/element'
+import { resetFocus, flushPendingBlur } from '@/apps/slides/stores/element'
+import {
+	lockedElsewhere,
+	holdsEditLock,
+	acquireEditLock,
+	releaseEditLock,
+} from '@/apps/slides/stores/editLock'
 import {
 	commandHistory,
 	setCommandHistory,
@@ -110,7 +147,7 @@ import {
 } from '@/apps/slides/stores/historyMeta'
 
 import { useShortcuts, showShortcutsModal } from '@/apps/slides/composables/useShortcuts'
-import { saveChanges, saveCurrentState, dirty } from '@/apps/slides/stores/saving'
+import { saveChanges, saveDraft, dirty, saveRefused } from '@/apps/slides/stores/saving'
 import {
 	refreshOfflineStatus,
 	warmOfflineCopyAssets,
@@ -119,7 +156,6 @@ import {
 import { inSlideShowMode, startSlideShow } from '@/apps/slides/stores/slideshow'
 import { Layout } from 'lucide-vue-next'
 import { useCommandHistory } from '@/apps/slides/composables/useCommandHistory'
-
 
 const route = useRoute()
 const router = useRouter()
@@ -164,9 +200,9 @@ usePageMeta(() => {
 
 onActivated(() => (document.title = pageTitle()))
 
+// a drag in progress would push every intermediate position
 const handleAutoSave = () => {
-	if (isSlideInteractionActive.value || focusElementId.value != null) return
-	saveChanges()
+	if (!isSlideInteractionActive.value) saveChanges()
 }
 
 const updateRoute = async (slug) => {
@@ -179,18 +215,21 @@ const updateRoute = async (slug) => {
 }
 
 const initAutoSave = () => {
+	clearInterval(autosaveInterval)
 	autosaveInterval = setInterval(handleAutoSave, 500)
 }
 
-const loadPresentation = async (id) => {
-	presentationDoc.value = await initPresentationDoc(id, inReadonlyMode.value)
-}
-
 const handleBeforeUnload = (e) => {
-	if (dirty.value) {
+	// a tab that lost the lock has nothing left to save
+	if (dirty.value && !inReadonlyMode.value) {
 		e.preventDefault()
 		e.returnValue = ''
 	}
+}
+
+// best effort: the tab is going away, whatever the draft store manages to take goes in
+const handlePageHide = () => {
+	if (dirty.value) saveDraft()
 }
 
 const loadTemplates = () => {
@@ -202,6 +241,7 @@ const performBeforeLoadOperations = () => {
 	if (inReadonlyMode.value) return
 
 	window.addEventListener('beforeunload', handleBeforeUnload)
+	window.addEventListener('pagehide', handlePageHide)
 }
 
 const performAfterLoadOperations = () => {
@@ -218,15 +258,47 @@ const performAfterLoadOperations = () => {
 const loadEditorState = async () => {
 	const id = props.presentationId
 	if (!id) return
+	// re-entry from Home fires both the route and the props watcher; only the last load lands
+	// read off the prop: the store flag follows one watcher later
+	const readonly = props.editorAccess == 'view'
+	// another tab may have saved while the lock was out of this tab's hands
+	const current = readonly || holdsEditLock(id)
+	// the copy on screen is behind then, and an edit made to it would go under the fresh one
+	if (!current) resetEditorState()
+	const load = startLoad()
+
+	if (!readonly) {
+		const held = await acquireEditLock(id, handleLockLost)
+		if (!isLatestLoad(load)) return
+		// refused with no other holder: the editor left while the request was pending
+		if (!held && !lockedElsewhere.value) return
+	}
 
 	performBeforeLoadOperations()
-	if (presentationDoc.value && presentationId.value === id && slides.value.length) {
+	if (current && presentationDoc.value && presentationId.value === id && slides.value.length) {
 		performAfterLoadOperations()
 		return
 	}
 
-	await loadPresentation(id)
+	const doc = await initPresentationDoc(id, readonly, load)
+	if (!doc) return
 	performAfterLoadOperations()
+}
+
+// the server copy replaces what is on screen; the lock stays with this tab
+const reloadPresentation = async (load = startLoad()) => {
+	performBeforeLoadOperations()
+	const doc = await initPresentationDoc(props.presentationId, false, load)
+	if (!doc) return
+	commandHistory.clearHistory()
+	performAfterLoadOperations()
+}
+
+const takeOverEditing = async () => {
+	const load = startLoad()
+	await acquireEditLock(props.presentationId, handleLockLost, { steal: true })
+	if (!isLatestLoad(load)) return
+	await reloadPresentation(load)
 }
 
 const handleMounted = () => {
@@ -241,15 +313,48 @@ const hideOpenDialogs = () => {
 	deleteDialog?.close()
 }
 
-const handleBeforeUnmount = () => {
+// the open editor and the selection belong to the presentation being left
+const leavePresentation = () => {
+	flushPendingBlur()
+	resetFocus()
+	saveChanges()
+	releaseEditLock()
+	// a store left live would push from Home after giving up the lock
+	resetEditorState()
+}
+
+// the taking tab pushes what it finds in the draft; a push from here would race it
+const handleLockLost = () => {
+	flushPendingBlur()
+	resetFocus()
+	saveDraft()
+	clearInterval(autosaveInterval)
+}
+
+// an open text box would keep taking keystrokes the draft no longer sees
+watch(saveRefused, (refused) => {
+	if (!refused) return
+	flushPendingBlur()
+	resetFocus()
+	clearInterval(autosaveInterval)
+})
+
+const handleDeactivated = () => {
 	thumbnailCaptureRef.value?.reset()
 	clearInterval(autosaveInterval)
 
-	if (router.currentRoute.value.name !== 'slides-slideshow') {
+	// the slideshow keeps the editor and its lock, so only the edits go out before it starts
+	if (router.currentRoute.value.name === 'slides-slideshow') {
+		flushPendingBlur()
 		resetFocus()
-		saveCurrentState()
-	}
+		saveChanges()
+	} else leavePresentation()
+}
+
+const handleBeforeUnmount = () => {
+	handleDeactivated()
 	window.removeEventListener('beforeunload', handleBeforeUnload)
+	window.removeEventListener('pagehide', handlePageHide)
 	window.removeEventListener('popstate', hideOpenDialogs)
 }
 
@@ -273,13 +378,14 @@ watch(
 	() => route.name,
 	(name) => {
 		if (!['slides-editor-new', 'slides-editor'].includes(name)) return
-		inReadonlyMode.value = props.editorAccess == 'view'
+
 		if (name === 'slides-editor-new') {
-			resetEditorState()
+			leavePresentation()
 			themeDialogAction.value = 'create'
 			showThemeDialog.value = true
 			return
 		}
+
 		loadEditorState()
 	},
 	{ immediate: true },
@@ -289,7 +395,7 @@ watch(
 	() => props.presentationId,
 	(id, prevId) => {
 		if (!id || !prevId || id === prevId) return
-		inReadonlyMode.value = props.editorAccess == 'view'
+		leavePresentation()
 		thumbnailCaptureRef.value?.reset()
 		commandHistory.clearHistory()
 		loadEditorState()
@@ -302,14 +408,18 @@ onBeforeRouteLeave(() => {
 
 window.addEventListener('popstate', hideOpenDialogs)
 
+// after the switch watcher, so the presentation being left is flushed while it may still write
 watch(
 	() => props.editorAccess,
-	(doc) => {
-		inReadonlyMode.value = doc === 'view'
+	(access) => {
+		viewOnly.value = access === 'view'
 	},
+	{ immediate: true },
 )
 
 onMounted(() => handleMounted())
+
+onDeactivated(() => handleDeactivated())
 
 onBeforeUnmount(() => handleBeforeUnmount())
 
@@ -355,21 +465,16 @@ const updatePresentationTheme = async (theme) => {
 	showThemeDialog.value = false
 
 	try {
-		const doc = await call('frappe.client.set_value', {
-			doctype: 'Presentation',
+		const doc = await call('suite.slides.doctype.presentation.presentation.update_theme', {
 			name: id,
-			fieldname: 'theme',
-			value: theme,
+			theme: theme,
 		})
 
-		// the editor can move on mid-request; writing then would apply the theme
-		// and the modified stamp to a different presentation
+		// the editor can move to another presentation mid-request
 		if (presentationDoc.value?.name !== id) return
 
 		presentationDoc.value.theme = theme
-		// autosave stamps this onto the local copy, so a stale value would make the
-		// next load discard edits that had not synced yet
-		presentationDoc.value.modified = doc.modified
+		await adoptServerVersion(id, doc)
 	} catch (error) {
 		console.error('Failed to update theme: ', error)
 		toast.error('Could not update the theme. Please try again.')

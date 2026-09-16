@@ -25,6 +25,7 @@ import type {
 	ConsumerClosedEvent,
 	ConsumerUpdatePreferencesRequest,
 	CreateWebRtcTransportRequest,
+	E2eeEpochEnvelope,
 	ExistingRaisedHandsEvent,
 	HandRaisedEvent,
 	HostControlRequest,
@@ -68,70 +69,38 @@ import type {
 	UserData,
 } from '../../../types';
 
-// Re-export mediasoup types
+// Types shared with other SFU modules
 export type {
-	ActiveSpeakerEvent,
 	AppData,
-	AudioLevelObserver,
-	AuthExpiredEvent,
 	ChatMessage,
-	ChatSendRequest,
 	Consumer,
-	ConsumerClosedEvent,
-	ConsumerUpdatePreferencesRequest,
-	CreateWebRtcTransportRequest,
 	DtlsParameters,
-	ExistingRaisedHandsEvent,
+	E2eeEpochEnvelope,
 	HandRaisedEvent,
-	HostControlRequest,
-	HostControlUpdateEvent,
 	IceCandidate,
 	IceParameters,
-	JoinRoomRequest,
-	LeaveRoomRequest,
 	MediaControlAction,
-	MediaControlRequest,
-	MediaControlUpdateEvent,
-	NetworkQualityUpdateEvent,
 	ParticipantInfo,
-	ParticipantJoinedEvent,
-	ParticipantLeftEvent,
 	PinnedChatMessage,
-	PlainTransport,
 	PreviewParticipantInfo,
-	Producer,
 	ProducerCloseDetails,
-	ProducerClosedEvent,
 	ProducerCloseReason,
 	ProducerCloseSource,
 	ProducerCloseTrackSettings,
-	ProducerCreatedEvent,
-	RaiseHandRequest,
 	ReactionMessage,
-	ReactionSendRequest,
 	RecorderStageParticipant,
 	RecorderStageProducer,
-	RecorderStageProjectionEvent,
 	RecorderStageProjectionPayload,
 	RecorderStageSnapshot,
-	RecordingJoinRequest,
-	RecordingProjectionSnapshotResponse,
 	RecordingProofChallenge,
 	RecordingProofRequest,
-	RecordingProofResponse,
-	Router,
-	RouterRtpCodecCapability,
 	RtpCapabilities,
 	RtpCodecCapability,
 	RtpParameters,
-	ScreenShareRequest,
 	ScreenShareStartedEvent,
 	ScreenShareStoppedEvent,
-	SFUErrorEvent,
 	SFUScope,
-	UpdateTokenRequest,
 	UserData,
-	WebRtcServer,
 	WebRtcTransport,
 	WorkerLogLevel,
 	WorkerSettings,
@@ -372,39 +341,37 @@ export interface SocketData {
 	scope?: SFUScope;
 }
 
-export interface SFUResponse {
+interface SFUResponse {
 	success: boolean;
 	error?: string;
 	code?: string;
 	details?: { conflictId?: string };
 }
 
-export interface RouterRtpCapabilitiesResponse extends SFUResponse {
+interface RouterRtpCapabilitiesResponse extends SFUResponse {
 	rtpCapabilities: RtpCapabilities;
 }
 
-export interface WebRTCTransportResponse extends SFUResponse {
+interface WebRTCTransportResponse extends SFUResponse {
 	id: string;
 	iceParameters: IceParameters;
 	iceCandidates: IceCandidate[];
 	dtlsParameters: DtlsParameters;
 }
 
-export interface TransportIceRestartResponse extends SFUResponse {
+interface TransportIceRestartResponse extends SFUResponse {
 	iceParameters: IceParameters;
 }
 
-export interface ProducerResponse extends SFUResponse, ProducerInfo {
+interface ProducerResponse extends SFUResponse, ProducerInfo {
 	isScreen: boolean;
 }
 
-export interface ConsumerResponse extends SFUResponse, ConsumerInfo {}
+interface ConsumerResponse extends SFUResponse, ConsumerInfo {}
 
-export interface CloseProducerResponse
-	extends SFUResponse,
-		CloseProducerResult {}
+interface CloseProducerResponse extends SFUResponse, CloseProducerResult {}
 
-export interface ConsumerPreferenceResponse extends SFUResponse {
+interface ConsumerPreferenceResponse extends SFUResponse {
 	appliedLayers?: {
 		spatialLayer: number | null;
 		temporalLayer: number | null;
@@ -413,16 +380,16 @@ export interface ConsumerPreferenceResponse extends SFUResponse {
 	visible?: boolean;
 }
 
-export interface ExistingProducersResponse extends SFUResponse {
+interface ExistingProducersResponse extends SFUResponse {
 	producers: ExistingProducer[];
 }
 
-export interface RoomParticipantsResponse extends SFUResponse {
+interface RoomParticipantsResponse extends SFUResponse {
 	participants: ParticipantInfo[] | PreviewParticipantInfo[];
 	isCurrentUserPresent?: boolean;
 }
 
-export interface ProducerInfo {
+interface ProducerInfo {
 	id: string;
 	kind: 'audio' | 'video';
 	appData: ProducerAppData;
@@ -442,7 +409,7 @@ export type JsonValue =
 	| JsonValue[]
 	| { [key: string]: JsonValue };
 
-export interface ConsumerInfo {
+interface ConsumerInfo {
 	id: string;
 	producerId: string;
 	kind: 'audio' | 'video';
@@ -471,6 +438,7 @@ export interface ExistingProducer {
 // Mediasoup Manager types
 export interface Room {
 	id: string;
+	workerId: number;
 	router: Router;
 	webRtcServer: WebRtcServer;
 	audioLevelObserver: AudioLevelObserver;
@@ -481,10 +449,7 @@ export interface Room {
 export interface Peer {
 	id: string;
 	info: PeerInfo;
-	transports: Map<string, WebRtcTransport>;
 	producers: Map<string, Producer>;
-	consumers: Map<string, Consumer>;
-	joined: Date;
 }
 
 export interface PeerInfo extends UserData {
@@ -500,7 +465,7 @@ export interface WebRtcTransportData {
 	type: 'webrtc';
 }
 
-export interface PlainTransportData {
+interface PlainTransportData {
 	roomId: string;
 	peerId: string;
 	transport: PlainTransport;
@@ -523,16 +488,6 @@ export interface ConsumerData {
 	consumer: Consumer;
 }
 
-export interface RoomStats {
-	id: string;
-	created: Date;
-	peerCount: number;
-	participantCount: number;
-	peers: string[];
-	producerCount?: number;
-	consumerCount?: number;
-}
-
 // Configuration types
 export interface MediasoupConfig {
 	numWorkers: number;
@@ -542,7 +497,7 @@ export interface MediasoupConfig {
 	webRtcServer: WebRTCServerOptions;
 }
 
-export interface RouterConfig {
+interface RouterConfig {
 	mediaCodecs: RouterRtpCodecCapability[];
 }
 
@@ -582,7 +537,7 @@ export interface HealthStats {
 	peers: number;
 }
 
-export interface PollOption {
+interface PollOption {
 	id: string;
 	text: string;
 	votes: number;
@@ -600,7 +555,7 @@ export interface ActivePoll {
 }
 
 // for FE, sending the votedUser each payload not a good idea, if the votedUser are in huge qty
-export interface PollPayloadFE {
+interface PollPayloadFE {
 	pollId: string;
 	createdBy: string;
 	createdByName?: string;
@@ -610,94 +565,6 @@ export interface PollPayloadFE {
 	hasVoted?: boolean;
 	createdAt: string;
 }
-export type E2eeEpochEnvelope =
-	| E2eeEpochKeyPackageRequest
-	| E2eeEpochGenesisRequest
-	| E2eeEpochKeyPackage
-	| E2eeEpochCommitRequest
-	| E2eeEpochCommit
-	| E2eeEpochWelcome
-	| E2eeEpochAck
-	| E2eeEpochResyncRequest
-	| E2eeEpochJoinStatus;
-
-export type E2eeEpochKeyPackageRequest = {
-	type: 'key-package-request';
-	epochNumber: number;
-	reason: 'enable' | 'join' | 'reconnect';
-};
-
-export type E2eeEpochGenesisRequest = {
-	type: 'genesis-request';
-	epochNumber: 1;
-	message: string;
-};
-
-export type E2eeEpochKeyPackage = {
-	type: 'key-package';
-	fromParticipantId: string;
-	fromSenderId: number;
-	epochNumber: number;
-	reason?: 'enable' | 'join' | 'reconnect';
-	keyPackage: string;
-};
-
-export type E2eeEpochCommitRequest = {
-	type: 'commit-request';
-	epochNumber: number;
-	nextEpochNumber: number;
-	membershipDeltaId: string;
-	membershipDeltaHash: string;
-	rosterHash: string;
-	committerSenderId: number;
-	joiningSenderIds: number[];
-	removedSenderIds?: number[];
-};
-
-export type E2eeEpochCommit = {
-	type: 'commit';
-	fromParticipantId: string;
-	fromSenderId: number;
-	previousEpochNumber: number;
-	epochNumber: number;
-	membershipDeltaId: string;
-	membershipDeltaHash: string;
-	rosterHash: string;
-	mlsCommit: string;
-};
-
-export type E2eeEpochWelcome = {
-	type: 'welcome';
-	fromParticipantId: string;
-	fromSenderId: number;
-	toParticipantId: string;
-	toSenderId: number;
-	epochNumber: number;
-	mlsWelcome: string;
-};
-
-export type E2eeEpochAck = {
-	type: 'ack';
-	fromParticipantId: string;
-	fromSenderId: number;
-	epochNumber: number;
-};
-
-export type E2eeEpochResyncRequest = {
-	type: 'resync-request';
-	fromParticipantId: string;
-	fromSenderId: number;
-	knownEpochNumber?: number;
-};
-
-export type E2eeEpochJoinStatus = {
-	type: 'join-status';
-	status: 'pending' | 'failed';
-	reason?: 'waiting-for-admitter' | 'waiting-for-host';
-	epochNumber: number;
-	message: string;
-};
-
 // Socket.IO module augmentation
 declare module 'socket.io' {
 	interface Socket {

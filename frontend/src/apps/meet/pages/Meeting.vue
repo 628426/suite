@@ -83,9 +83,10 @@
 				:meetingTitle="previewTitle"
 				:isCameraOn="mediaState.isCameraOn"
 				:isMicOn="mediaState.isMicOn"
+				:mediaStream="mediaState.localStream"
 				:cameraPermissionGranted="mediaState.cameraPermissionGranted"
 				:microphonePermissionGranted="mediaState.microphonePermissionGranted"
-				:isConnecting="sfuConnection.isConnecting.value"
+				:isConnecting="isInitializingPreview || sfuConnection.isConnecting.value"
 				:userInitials="currentUser.userInitials.value"
 				:userAvatar="currentUser.userAvatar.value"
 				:currentUserName="
@@ -338,8 +339,6 @@ import {
 } from "../composables/useSFUConnection";
 import {
 	autoHideToolbar,
-	selectedCameraId,
-	selectedMicId,
 	selectedSpeakerId,
 } from "../data/mediaPreferences";
 import {
@@ -682,25 +681,6 @@ const mediaControls = useMediaControls({
 	deviceManager,
 	backgroundEffects,
 	noiseCancellation,
-	toast,
-	mediaPreferences: {
-		micEnabled: ref(false),
-		cameraEnabled: ref(false),
-		selectedCameraId,
-		selectedMicId,
-		selectedSpeakerId,
-		pushToTalkEnabled: ref(false),
-		noiseCancellationEnabled: ref(false),
-		setMicEnabled: (_v: boolean) => {
-			/* handled via mediaState */
-		},
-		setCameraEnabled: (_v: boolean) => {
-			/* handled via mediaState */
-		},
-		setSelectedCameraId: () => {},
-		setSelectedMicId: () => {},
-		setSelectedSpeakerId: () => {},
-	},
 });
 
 import { meetingControls } from "../composables/useKeyboardShortcuts";
@@ -918,6 +898,7 @@ const isHandRaised = computed(() => {
 });
 
 // --- Refs ---
+const isInitializingPreview = ref(true);
 const isReactionPickerOpen = ref(false);
 const isFullscreen = ref(false);
 const isToolbarVisible = ref(true);
@@ -1122,6 +1103,7 @@ onMounted(async () => {
 			}
 		} catch (error) {
 			console.error("Failed to check meeting access:", error);
+			isInitializingPreview.value = false;
 			return;
 		}
 	}
@@ -1139,7 +1121,7 @@ onMounted(async () => {
 		if (selectedSpeakerId.value) {
 			await mediaControls.applySpeakerDevice();
 		}
-		connectionState.isInPreview = true;
+		isInitializingPreview.value = false;
 		return;
 	}
 
@@ -1157,6 +1139,8 @@ onMounted(async () => {
 	if (selectedSpeakerId.value) {
 		await mediaControls.applySpeakerDevice();
 	}
+
+	isInitializingPreview.value = false;
 
 	// Auto-join if just created
 	if (wasJustCreated) {

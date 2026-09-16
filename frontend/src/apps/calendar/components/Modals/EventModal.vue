@@ -1053,6 +1053,8 @@ const recurringScopeModalProps = computed(() => ({
 										<FormControl
 											v-model="event.startDate"
 											type="date"
+											format="MMM D, YYYY"
+											:placeholder="__('Select date')"
 											class="min-w-0 flex-[7]"
 										/>
 										<FormControl
@@ -1061,6 +1063,7 @@ const recurringScopeModalProps = computed(() => ({
 											type="time"
 											:interval="15"
 											format="h:mm A"
+											:placeholder="__('Select time')"
 											class="min-w-0 flex-[6]"
 										/>
 									</div>
@@ -1070,13 +1073,20 @@ const recurringScopeModalProps = computed(() => ({
 										{{ __('Ends') }}
 									</label>
 									<div class="flex gap-2">
-										<FormControl v-model="event.endDate" type="date" class="min-w-0 flex-[7]" />
+										<FormControl
+											v-model="event.endDate"
+											type="date"
+											format="MMM D, YYYY"
+											:placeholder="__('Select date')"
+											class="min-w-0 flex-[7]"
+										/>
 										<FormControl
 											v-if="!event.isAllDay"
 											v-model="event.endTime"
 											type="time"
 											:interval="15"
 											format="h:mm A"
+											:placeholder="__('Select time')"
 											class="min-w-0 flex-[6]"
 										/>
 									</div>
@@ -1109,7 +1119,7 @@ const recurringScopeModalProps = computed(() => ({
 									</div>
 									<div class="truncate text-xs text-ink-gray-5">{{ meetLinkDisplay }}</div>
 								</div>
-								<Button variant="ghost" :title="__('Copy Frappe Meet link')" @click="copyMeetLink">
+								<Button variant="ghost" :tooltip="__('Copy Frappe Meet link')" @click="copyMeetLink">
 									<template #icon><Copy :size="14" class="icon text-ink-gray-5" /></template>
 								</Button>
 								<Button :label="__('Join')" @click="joinMeet" />
