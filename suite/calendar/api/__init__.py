@@ -105,9 +105,7 @@ def get_calendar_events(account: str, from_date: str, to_date: str, time_zone: s
 
 
 @frappe.whitelist()
-def get_calendar_event_density(
-    account: str, from_date: str, to_date: str, time_zone: str
-) -> list[dict]:
+def get_calendar_event_density(account: str, from_date: str, to_date: str, time_zone: str) -> list[dict]:
     """The bare minimum needed to mark a day as busy, for the sidebar's mini month.
 
     That card is a navigation aid: it has to draw a tick under any day with something on
@@ -127,9 +125,7 @@ def get_calendar_event_density(
 
     # A decline gives the time back, so a declined event is not density. Matching the
     # viewer's own addresses is what tells a decline of theirs from anyone else's.
-    own_emails = {
-        (identity.get("email") or "").lower() for identity in get_participant_identities(account)
-    }
+    own_emails = {(identity.get("email") or "").lower() for identity in get_participant_identities(account)}
 
     return [
         {
