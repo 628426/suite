@@ -31,10 +31,10 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { BottomSheet } from 'frappe-ui'
 
-import dayjs from '@/apps/calendar/utils/dayjs'
 import { useViewSheet } from '@/apps/calendar/composables/useViewSheet'
 import {
 	MOBILE_VIEWS,
+	routeDate,
 	routeForView,
 	viewForRoute,
 	viewIcon,
@@ -51,13 +51,6 @@ const { isViewSheetOpen, closeViewSheet } = useViewSheet()
 
 const currentView = computed<MobileView>(() => viewForRoute(route.name))
 
-/** A route without a date means today, the way the view writes it. */
-const routeDate = () => {
-	const { year, month, day } = route.params
-	const date = year && month && day ? dayjs(`${year}-${month}-${day}`, 'YYYY-M-D') : dayjs()
-	return date.isValid() ? date : dayjs()
-}
-
 // The URL is the source of truth for the view, so switching is a navigation, not
 // a flag handed to the view — and Back retraces it, as it does on the desktop.
 // The day stays put: the month you open is the one the agenda was on.
@@ -65,7 +58,7 @@ const select = (view: MobileView) => {
 	closeViewSheet()
 	if (view === currentView.value) return
 
-	const day = routeDate()
+	const day = routeDate(route.params)
 	router.push({
 		name: routeForView(view),
 		params: {

@@ -61,17 +61,17 @@
 			     rule that widened with the day's load: on a month where most days have
 			     something, a mark under nearly every one that also varied in width
 			     read as noise. The dots say what is worth saying at this size — there
-			     is something here, and whose — and leave the numerals to be read. Four
-			     at most, 2px apart: a fifth would run past the circle's edge, and a
+			     is something here, and whose — and leave the numerals to be read. Three
+			     at most, 2px apart: a fourth would run past the circle's edge, and a
 			     pixel apart they read as one broken line. Days of the
 			     neighbouring months stay bare: their number is orientation, not an
 			     invitation to read what is on them.
 
 			     Absolute at the circle's foot, so an empty row costs the numeral nothing. -->
 			<span class="absolute inset-x-0 bottom-1 flex h-1 items-center justify-center gap-0.5">
-				<template v-if="day.inMonth && day.load">
+				<template v-if="day.inMonth">
 					<span
-						v-for="color in day.colors.slice(0, 4)"
+						v-for="color in day.colors"
 						:key="color"
 						class="size-1 rounded-full"
 						:style="{ backgroundColor: eventColor(color) }"

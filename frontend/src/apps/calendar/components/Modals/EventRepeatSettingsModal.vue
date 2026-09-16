@@ -193,7 +193,7 @@ const removeRepeat = () => {
 	     written once and handed to whichever shell the device asks for. -->
 	<component
 		:is="isMobile ? BottomSheet : Dialog"
-		v-bind="isMobile ? { title: __('Repeat') } : DIALOG_OPTIONS"
+		v-bind="DIALOG_OPTIONS"
 		:open="show"
 		@update:open="(value: boolean) => (show = value)"
 	>

@@ -38,6 +38,8 @@ const { calendars, visibleCalendars, events, selectedEvent } = defineProps<{
 	events?: any[]
 	/** The open event, so its row reads as active. */
 	selectedEvent?: any
+	/** Palette colour per calendar id, for the mini month's dots. */
+	calendarColor: (calendar: string) => string
 }>()
 
 const emit = defineEmits<{
@@ -46,11 +48,6 @@ const emit = defineEmits<{
 	selectEvent: [event: any, e: MouseEvent]
 }>()
 
-
-// The mini month names calendars by id; the palette is assigned here, where the
-// calendars and their colours already live.
-const miniMonthColor = (calendar: string) =>
-	calendars.find((cal: any) => cal.name === calendar)?.color || 'green'
 
 const dotStyle = (color: string) => ({ background: eventColor(color) })
 
@@ -187,7 +184,7 @@ const menuItems = computed(() => [
 					<MiniMonth
 						:month
 						:year
-						:calendar-color="miniMonthColor"
+						:calendar-color="calendarColor"
 						:selected="day != null ? new Date(year, month, day) : undefined"
 						@select="(date) => emit('selectDate', date)"
 					/>

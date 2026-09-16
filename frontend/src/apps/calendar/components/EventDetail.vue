@@ -172,8 +172,6 @@ const repeatMessage = computed(() =>
 
 // --- Calendar (colour + account) ---
 
-const DEFAULT_EVENT_COLOR = '#30a66d'
-
 const eventCalendar = computed(
 	() => calendarEvent.calendars?.find((c: any) => c.color) ?? calendarEvent.calendars?.[0],
 )

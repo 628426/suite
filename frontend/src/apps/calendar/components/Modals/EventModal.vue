@@ -906,11 +906,6 @@ const AVAILABILITY_OPTIONS = [
 	{ label: __('Busy'), value: 'Busy' },
 ]
 
-const VISIBILITY_OPTIONS = [
-	{ label: __('Public'), value: 'Public' },
-	{ label: __('Private'), value: 'Private' },
-]
-
 const showNotifyParticipantsOptions = computed(() => ({
 	title: __('Notify Participants'),
 	icon: { name: 'lucide-bell' },

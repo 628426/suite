@@ -11,27 +11,13 @@
  * it is not worth a round trip on every page load.
  */
 
+import { VIEW_ROUTES } from '@/apps/calendar/utils/mobileView'
+
 const STORAGE_KEY = 'calendar-view'
-
-/**
- * Every view the calendar offers, on either device: the phone draws the same
- * four, on the same routes, at its own width. It drew three for a while — a week
- * of seven columns had nothing legible in it until the week learnt to be narrow
- * — and a preference for the one it was missing had to be declined at the door.
- */
-const VIEWS = [
-	'calendar-month',
-	'calendar-week',
-	'calendar-day',
-	'calendar-agenda',
-] as const
-
-export type CalendarViewRoute = (typeof VIEWS)[number]
 
 /** Remembers `name`, if it is a view route at all. */
 export const rememberCalendarView = (name: unknown) => {
-	if (typeof name !== 'string') return
-	if (!VIEWS.includes(name as CalendarViewRoute)) return
+	if (typeof name !== 'string' || !VIEW_ROUTES.includes(name)) return
 	try {
 		localStorage.setItem(STORAGE_KEY, name)
 	} catch {
@@ -45,13 +31,12 @@ export const rememberCalendarView = (name: unknown) => {
  * a view. The caller supplies the default it wants instead, since that differs
  * between the phone and the desktop.
  */
-export const lastCalendarView = (): CalendarViewRoute | null => {
+export const lastCalendarView = (): string | null => {
 	let stored: string | null = null
 	try {
 		stored = localStorage.getItem(STORAGE_KEY)
 	} catch {
 		return null
 	}
-	if (!stored) return null
-	return VIEWS.includes(stored as CalendarViewRoute) ? (stored as CalendarViewRoute) : null
+	return stored && VIEW_ROUTES.includes(stored) ? stored : null
 }

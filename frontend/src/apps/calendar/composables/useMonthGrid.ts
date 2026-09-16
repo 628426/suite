@@ -5,10 +5,9 @@ import dayjs from '@/apps/calendar/utils/dayjs'
 import type { MaybeRefOrGetter } from 'vue'
 
 /**
- * The day model behind every date grid in the app — the sidebar's MiniMonth
- * card, the phone's month, the phone's week strip. What differs between them is
- * how big a day is drawn and what the density is drawn as; which days there
- * are, and how loaded each one is, is one answer.
+ * The day model behind the MiniMonth card, in the sidebar and in the phone's
+ * date picker. What differs between the two is how big a day is drawn; which
+ * days there are, and whose calendars have something on each, is one answer.
  */
 
 export interface GridEvent {
@@ -26,43 +25,27 @@ export interface GridDay {
 	inMonth: boolean
 	isToday: boolean
 	isSelected: boolean
-	/** How many events touch the day. */
-	load: number
 	/** Palette names of the calendars with something on the day, first seen first. */
 	colors: string[]
 }
 
-/** Segments a density mark splits into; more than three would be slivers. */
-export const MAX_SEGMENTS = 3
+/** Dots under a day: a fourth would run past the circle's edge. */
+const MAX_DOTS = 3
 
 /**
- * How busy a day is, and whose calendars make it so. A draft claims the time,
- * so it counts; a decline gives it back, so it does not.
+ * Whose calendars have something on the day. A draft claims the time, so it
+ * counts; a decline gives it back, so it does not.
  */
-export const dayLoad = (events: GridEvent[], key: string) => {
-	let load = 0
+const dayColors = (events: GridEvent[], key: string) => {
 	const colors: string[] = []
 	for (const event of events) {
 		if (event.isDeclined) continue
 		if (event.fromDate > key || event.toDate < key) continue
-		load++
 		const color = event.color || 'green'
-		if (!colors.includes(color) && colors.length < MAX_SEGMENTS) colors.push(color)
+		if (!colors.includes(color) && colors.length < MAX_DOTS) colors.push(color)
 	}
-	return { load, colors }
+	return colors
 }
-
-/** The seven days of the week `date` falls in, Sunday first. */
-export const weekDays = (
-	date: MaybeRefOrGetter<Date | string>,
-	events: MaybeRefOrGetter<GridEvent[]>,
-	selectedKey: MaybeRefOrGetter<string> = '',
-) =>
-	computed<GridDay[]>(() => {
-		const anchor = dayjs(toValue(date))
-		const start = anchor.subtract(anchor.day(), 'day')
-		return buildDays(start, 7, anchor.month(), toValue(events), toValue(selectedKey))
-	})
 
 /**
  * Six rows of the month `month`/`year`, Sunday first, padded with the
@@ -98,7 +81,7 @@ const buildDays = (
 			inMonth: date.month() === month,
 			isToday: key === today,
 			isSelected: key === selectedKey,
-			...dayLoad(events, key),
+			colors: dayColors(events, key),
 		}
 	})
 }

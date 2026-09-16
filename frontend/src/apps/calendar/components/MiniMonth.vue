@@ -40,7 +40,7 @@
 			     and the dates it named nothing — a card whose loudest thing was the
 			     circle round today. -->
 			<span class="text-base font-medium leading-5 text-ink-gray-9">{{ monthName }}</span>
-			<span class="text-sm leading-5 text-ink-gray-4">{{ year }}</span>
+			<span class="text-sm leading-5 text-ink-gray-4">{{ viewed.year }}</span>
 			<span class="flex-1" />
 			<!-- On a phone the arrows are 40px circles, as every icon button there
 			     is — a thumb needs the target even where the row does not need the
@@ -124,7 +124,6 @@ const page = (months: number) => {
 const weekdays = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 
 const monthName = computed(() => dayjs().month(viewed.value.month).format('MMMM'))
-const year = computed(() => viewed.value.year)
 
 const selectedKey = computed(() =>
 	props.selected ? dayjs(props.selected).format('YYYY-MM-DD') : '',

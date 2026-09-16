@@ -25,7 +25,13 @@ import EventModal from '@/apps/calendar/components/Modals/EventModal.vue'
 import RecurringScopeModal from '@/apps/calendar/components/Modals/RecurringScopeModal.vue'
 import EventDetailSheet from '@/apps/calendar/components/mobile/EventDetailSheet.vue'
 import MobileCalendar from '@/apps/calendar/components/mobile/MobileCalendar.vue'
-import { routeForView, viewForRoute } from '@/apps/calendar/utils/mobileView'
+import {
+	modeForRoute,
+	routeDate,
+	routeForMode,
+	routeForView,
+	viewForRoute,
+} from '@/apps/calendar/utils/mobileView'
 
 import type { MobileView } from '@/apps/calendar/utils/mobileView'
 
@@ -40,23 +46,6 @@ const router = useRouter()
 
 const calendarRef = useTemplateRef('calendar')
 
-// Calendar's `activeView` is 'Month' | 'Week' | 'Day'; the suite router uses
-// namespaced names 'calendar-month' | 'calendar-week' | 'calendar-day'.
-const VIEW_TO_ROUTE = {
-	Month: 'calendar-month',
-	Week: 'calendar-week',
-	Day: 'calendar-day',
-	Agenda: 'calendar-agenda',
-}
-const ROUTE_TO_VIEW = {
-	'calendar-month': 'Month',
-	'calendar-week': 'Week',
-	'calendar-day': 'Day',
-	'calendar-agenda': 'Agenda',
-}
-const routeNameForView = (view) => VIEW_TO_ROUTE[view as keyof typeof VIEW_TO_ROUTE]
-const viewForRouteName = (name) => ROUTE_TO_VIEW[name as keyof typeof ROUTE_TO_VIEW]
-
 /* -------------------------------------------------------------------------- */
 /* The phone shell                                                            */
 /*                                                                            */
@@ -69,19 +58,12 @@ const viewForRouteName = (name) => ROUTE_TO_VIEW[name as keyof typeof ROUTE_TO_V
 /* -------------------------------------------------------------------------- */
 
 /** The day the phone is on. The desktop's equivalent lives inside the Calendar. */
-const mobileDate = ref(routeDate().format('YYYY-MM-DD'))
+const mobileDate = ref(routeDate(route.params).format('YYYY-MM-DD'))
 const mobileView = ref<MobileView>(viewForRoute(route.name))
 
 // Drives the now-line and the "Today" affordance. Half a minute is as often as
 // a clock reading h:mm can say anything new.
 const now = useNow({ interval: 30_000 })
-
-/** A route without a date means today, the way setRoute writes it. */
-function routeDate() {
-	const { year, month, day } = route.params
-	const date = year && month && day ? dayjs(`${year}-${month}-${day}`, 'YYYY-M-D') : dayjs()
-	return date.isValid() ? date : dayjs()
-}
 
 // The month whose events are fetched: the calendar's on desktop, the selected
 // day's on the phone. Without this the phone asked for `dayjs().year(undefined)`
@@ -141,7 +123,7 @@ watch(
 	() => `${String(route.name)}|${route.params.year}|${route.params.month}|${route.params.day}`,
 	() => {
 		if (!isMobile.value) return
-		const date = routeDate().format('YYYY-MM-DD')
+		const date = routeDate(route.params).format('YYYY-MM-DD')
 		if (date !== mobileDate.value) mobileDate.value = date
 		mobileView.value = viewForRoute(route.name)
 	},
@@ -153,12 +135,11 @@ watch(
 		calendarRef.value?.currentMonth,
 		calendarRef.value?.currentDay,
 	],
-	([year, month], [oldYear, oldMonth]) => {
+	([year, month]) => {
 		// Nothing to write while the calendar is not mounted (a hot reload unmounts it).
 		if (year == null || month == null) return
 		// Refetching is the range watcher's job — a month change reports a new range
 		// too, and reloading here as well fetched the same window twice.
-		void oldYear, oldMonth
 		setRoute()
 	},
 )
@@ -166,7 +147,7 @@ watch(
 watch(
 	() => calendarRef.value?.activeView,
 	(view) => {
-		if (view && routeNameForView(view) !== route.name) setRoute()
+		if (view && routeForMode(view) !== route.name) setRoute()
 	},
 )
 
@@ -185,7 +166,7 @@ const setRoute = () => {
 
 	const target = dayjs().year(year).month(month).date(day)
 	const view = calendarRef.value?.activeView as 'Month' | 'Week' | 'Day' | 'Agenda'
-	const name = routeNameForView(view)
+	const name = routeForMode(view)
 	const accountId = route.params.accountId
 
 	// The other three view names double as dayjs units; Agenda does not, and an
@@ -207,7 +188,7 @@ const setRoute = () => {
 	// only re-forms the current entry rather than adding a copy of it.
 	const { year: y, month: m, day: d } = route.params
 	const current = y && m && d ? dayjs(`${y}-${m}-${d}`, 'YYYY-M-D') : dayjs()
-	if (viewForRouteName(route.name) === view && current.isSame(target, unit)) router.replace(location)
+	if (modeForRoute(route.name) === view && current.isSame(target, unit)) router.replace(location)
 	else router.push(location)
 }
 
@@ -220,7 +201,7 @@ const applyRoute = () => {
 	const calendar = calendarRef.value
 	if (!calendar) return
 
-	const view = viewForRouteName(route.name)
+	const view = modeForRoute(route.name)
 	if (view && calendar.activeView !== view) calendar.activeView = view
 
 	// A route without a date is today's, the way setRoute writes it.
@@ -1042,6 +1023,7 @@ const NOTIFY_MODAL_OPTIONS = {
 		<div v-if="!isMobile" class="flex min-h-0 min-w-0 flex-1">
 			<AppSidebar
 				:calendars="coloredCalendars"
+				:calendar-color="calendarColor"
 				:visible-calendars
 				:month="calendarRef?.currentMonth"
 				:year="calendarRef?.currentYear"
@@ -1149,32 +1131,28 @@ const NOTIFY_MODAL_OPTIONS = {
 		<!-- The phone. Agenda is home — a week strip for orientation and the list of
 		     what is coming — with the month a tap away and the same events under it.
 		     The tab bar and its FAB are the app's own chrome here, as mail's are. -->
-		<template v-else>
-			<MobileCalendar
-				:view="mobileView"
-				:events="visibleEvents"
-				:selected="mobileDate"
-				:now="now"
-				:open-event="selectedCalendarEvent"
-				:open-row="openRow"
-				:loading="eventsPending"
-				:calendar-color="calendarColor"
-				@select-date="(date) => (mobileDate = date)"
-				@select-view="(view) => (mobileView = view)"
-				@select-event="openEventRow"
-				@select-slot="handleOpenEvent"
-			/>
-		</template>
-	</div>
-	<template v-if="isMobile">
-		<EventDetailSheet
-			:calendar-event="selectedCalendarEvent"
-			@close="closeEventDetail"
-			@edit="editFromDetail"
-			@reload-events="reloadEvents"
-			@email-participants="emailParticipants"
+		<MobileCalendar
+			v-else
+			:view="mobileView"
+			:events="visibleEvents"
+			:selected="mobileDate"
+			:now="now"
+			:loading="eventsPending"
+			:calendar-color="calendarColor"
+			@select-date="(date) => (mobileDate = date)"
+			@select-view="(view) => (mobileView = view)"
+			@select-event="openEventRow"
+			@select-slot="handleOpenEvent"
 		/>
-	</template>
+	</div>
+	<EventDetailSheet
+		v-if="isMobile"
+		:calendar-event="selectedCalendarEvent"
+		@close="closeEventDetail"
+		@edit="editFromDetail"
+		@reload-events="reloadEvents"
+		@email-participants="emailParticipants"
+	/>
 	<EventModal v-model="showEditEvent" :selected-event="event" @reload-events="reloadEvents" />
 	<RecurringScopeModal
 		v-model="showRecurringEventModal"

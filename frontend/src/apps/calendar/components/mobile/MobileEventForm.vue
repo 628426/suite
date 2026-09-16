@@ -425,6 +425,13 @@ import { Avatar, BottomSheet, Button, Dropdown, Switch } from 'frappe-ui'
 import meetLogo from '@/assets/app-logos/meet.png'
 import dayjs from '@/apps/calendar/utils/dayjs'
 import { formatAlertPhrase, getRepeatMessage } from '@/apps/calendar/utils/format'
+import {
+	ALERT_ACTION_OPTIONS,
+	DIRECTION_OPTIONS,
+	RELATIVE_TO_OPTIONS,
+	UNIT_OPTIONS,
+	VISIBILITY_OPTIONS,
+} from '@/apps/calendar/utils/eventOptions'
 import { userStore } from '@/apps/calendar/stores/user'
 import { requestAlertPermission } from '@/utils/calendarAlert'
 import { useKeyboardInsets } from '@/composables/useKeyboardInsets'
@@ -515,11 +522,6 @@ const AVAILABILITY_OPTIONS = [
 	{ label: __('Free'), value: 'Free' },
 ]
 
-const VISIBILITY_OPTIONS = [
-	{ label: __('Public'), value: 'Public' },
-	{ label: __('Private'), value: 'Private' },
-]
-
 const availabilityLabel = computed(
 	() => AVAILABILITY_OPTIONS.find((option) => option.value === event.free_busy_status)?.label ?? '',
 )
@@ -598,30 +600,6 @@ const absoluteAlert = () => ({
 	time: '09:00',
 })
 
-// The desktop's own option lists, so an alert built on a phone is the same object
-// built with the same words as one built at a desk.
-const ALERT_ACTION_OPTIONS = [
-	{ label: __('Notification'), value: 'Display' },
-	{ label: __('Email'), value: 'Email' },
-]
-
-const UNIT_OPTIONS = [
-	{ label: __('Minutes'), value: 'minutes' },
-	{ label: __('Hours'), value: 'hours' },
-	{ label: __('Days'), value: 'days' },
-	{ label: __('Weeks'), value: 'weeks' },
-]
-
-const DIRECTION_OPTIONS = [
-	{ label: __('Before'), value: -1 },
-	{ label: __('After'), value: 1 },
-]
-
-const RELATIVE_TO_OPTIONS = [
-	{ label: __('Start'), value: 'Start' },
-	{ label: __('End'), value: 'End' },
-]
-
 /** Which kind of trigger the alert is, as a value the sheet can pick. */
 const ALERT_WHEN_OPTIONS = [
 	{ label: __('Relative'), value: 'relative' },
@@ -649,8 +627,12 @@ watch(
 )
 
 const editAlert = (field: string, value: string | number) => {
-	if (editingAlert.value === undefined) return
-	updateAlert(editingAlert.value, field, value)
+	const index = editingAlert.value
+	if (index === undefined) return
+	emit(
+		'setAlerts',
+		event.alerts.map((alert: object, i: number) => (i === index ? { ...alert, [field]: value } : alert)),
+	)
 }
 
 const alertWhen = computed(() =>
@@ -717,7 +699,11 @@ const applyAlertField = (field: AlertField, value: string | number) => {
 const removeEditedAlert = () => {
 	const index = editingAlert.value
 	editingAlert.value = undefined
-	if (index !== undefined) removeAlert(index)
+	if (index !== undefined)
+		emit(
+			'setAlerts',
+			event.alerts.filter((_: unknown, i: number) => i !== index),
+		)
 }
 
 // Added and opened in one tap: which kind it should be is a question the event has
@@ -739,20 +725,6 @@ watch(
 	() => event.alerts.length,
 	(count: number, previous: number) => count > previous && requestAlertPermission(),
 )
-
-const removeAlert = (index: number) =>
-	emit(
-		'setAlerts',
-		event.alerts.filter((_: unknown, i: number) => i !== index),
-	)
-
-const updateAlert = (index: number, field: string, value: string | number) =>
-	emit(
-		'setAlerts',
-		event.alerts.map((alert: object, i: number) =>
-			i === index ? { ...alert, [field]: value } : alert,
-		),
-	)
 
 const showAvailabilitySheet = ref(false)
 const showVisibilitySheet = ref(false)

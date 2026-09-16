@@ -2,6 +2,8 @@ import { computed, markRaw, type Component } from 'vue'
 import { Code, Contact, HardDriveDownload, HardDriveUpload, Palette, User } from 'lucide-vue-next'
 import { createResource } from 'frappe-ui'
 
+import { settingsGroups } from '@/composables/settingsGroups'
+
 import AdvancedSettings from '@/apps/calendar/components/Settings/AdvancedSettings.vue'
 import AppearanceSettings from '@/apps/calendar/components/Settings/AppearanceSettings.vue'
 import ExportSettings from '@/apps/calendar/components/Settings/ExportSettings.vue'
@@ -38,83 +40,66 @@ const clientConfig = createResource({
  * identity card at the top of it is what leads there.
  */
 export const useSettingsTabs = (exclude: string[] = []) => {
-	const allGroups = computed<SettingsGroup[]>(() => {
-		const all: SettingsGroup[] = [
-			{
-				label: __('General'),
-				items: [
+	const allGroups = computed<SettingsGroup[]>(() => [
+		{
+			label: __('General'),
+			items: [
+				{
+					label: __('Profile'),
+					value: 'profile',
+					icon: User,
+					component: markRaw(ProfileSettings),
+				},
+				{
+					label: __('Participant Identity'),
+					value: 'participant-identity',
+					icon: Contact,
+					component: markRaw(ParticipantIdentitySettings),
+				},
+				{
+					label: __('Appearance'),
+					value: 'appearance',
+					icon: Palette,
+					component: markRaw(AppearanceSettings),
+				},
+			],
+		},
+		{
+			label: __('Data'),
+			items: [
+				{
+					label: __('Import'),
+					value: 'import',
+					icon: HardDriveDownload,
+					component: markRaw(ImportSettings),
+				},
+				{
+					label: __('Export'),
+					value: 'export',
+					icon: HardDriveUpload,
+					component: markRaw(ExportSettings),
+				},
+			],
+		},
+		...(clientConfig.data?.server_url
+			? [
 					{
-						label: __('Profile'),
-						value: 'profile',
-						icon: User,
-						component: markRaw(ProfileSettings),
+						label: __('Developer'),
+						items: [
+							{
+								label: __('Advanced'),
+								value: 'advanced',
+								icon: Code,
+								component: markRaw(AdvancedSettings),
+							},
+						],
 					},
-					{
-						label: __('Participant Identity'),
-						value: 'participant-identity',
-						icon: Contact,
-						component: markRaw(ParticipantIdentitySettings),
-					},
-					{
-						label: __('Appearance'),
-						value: 'appearance',
-						icon: Palette,
-						component: markRaw(AppearanceSettings),
-					},
-				],
-			},
-			{
-				label: __('Data'),
-				items: [
-					{
-						label: __('Import'),
-						value: 'import',
-						icon: HardDriveDownload,
-						component: markRaw(ImportSettings),
-					},
-					{
-						label: __('Export'),
-						value: 'export',
-						icon: HardDriveUpload,
-						component: markRaw(ExportSettings),
-					},
-				],
-			},
-			...(clientConfig.data?.server_url
-				? [
-						{
-							label: __('Developer'),
-							items: [
-								{
-									label: __('Advanced'),
-									value: 'advanced',
-									icon: Code,
-									component: markRaw(AdvancedSettings),
-								},
-							],
-						},
-					]
-				: []),
-		]
+				]
+			: []),
+	])
 
-		return all
-	})
-
-	/** What the caller renders: every group, minus the rows it excluded. */
-	const groups = computed<SettingsGroup[]>(() =>
-		allGroups.value
-			.map((group) => ({ ...group, items: group.items.filter((t) => !exclude.includes(t.value)) }))
-			.filter((group) => group.items.length),
-	)
-
+	const { groups, findTab } = settingsGroups(allGroups, exclude)
 	const tabs = computed(() => groups.value.flatMap((group) => group.items))
-
-	// Resolves against the unexcluded list on purpose: the Profile page drops the
-	// Profile row from what it renders and still has to open that tab from the
-	// identity card at the top. Conditions still apply — a tab the account cannot
-	// have (Advanced without a CalDAV config) resolves to nothing either way.
-	const findTab = (value: string) =>
-		allGroups.value.flatMap((group) => group.items).find((tab) => tab.value === value)
 
 	return { groups, tabs, findTab }
 }

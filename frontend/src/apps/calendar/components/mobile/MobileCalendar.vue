@@ -134,10 +134,6 @@
 				{{ eventRowDescription(calendarEvent, calendarDaySpan(calendarEvent, date)) }}
 			</template>
 		</Calendar>
-		<!-- The date picker: the phone's own month grid, in the sheet every other
-		     switcher on this app uses. Its dots come from the events already fetched,
-		     so a month paged past the fetched window draws its dates and no density —
-		     picking a day there is what fetches it. -->
 		<!-- The date picker: the sidebar's own month card, in a sheet. A picker is
 		     the same object on either device — a month, two arrows and a day to tap —
 		     and a header of this view's own meant two copies of the paging and the
@@ -172,22 +168,19 @@ import { ChevronDown, ChevronLeft, ChevronRight, Menu } from 'lucide-vue-next'
 
 import dayjs from '@/apps/calendar/utils/dayjs'
 import { useViewSheet } from '@/apps/calendar/composables/useViewSheet'
+import { modeForView, viewForMode } from '@/apps/calendar/utils/mobileView'
 import { weekSpanLabel } from '@/apps/calendar/utils/format'
 import { eventRowDescription } from '@/apps/calendar/utils/eventMeta'
 import MiniMonth from '@/apps/calendar/components/MiniMonth.vue'
 
-import type { AgendaEvent } from '@/apps/calendar/utils/agenda'
 import type { MobileView } from '@/apps/calendar/utils/mobileView'
 
 const props = defineProps<{
-	events: AgendaEvent[]
+	events: any[]
 	/** The day both views are on, `YYYY-MM-DD`. */
 	selected: string
 	view: MobileView
 	now: Date
-	openEvent?: AgendaEvent | null
-	/** Which row opened the sheet — a multi-day event has one per day it covers. */
-	openRow?: string
 	/** Whether the events for the visible range are still on their way. */
 	loading?: boolean
 	/** Palette colour per calendar id, for the picker's density ticks. */
@@ -196,7 +189,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
 	selectDate: [date: string]
-	selectEvent: [event: AgendaEvent, date: string]
+	selectEvent: [event: any, date: string]
 	/** An empty slot in the day grid: the hour tapped, or its all-day row. */
 	selectSlot: [slot: { date: Date | string; time: string; isFullDay: boolean }]
 	/** The library moved to another of its views, and the route should follow. */
@@ -220,18 +213,6 @@ const pickerMonth = ref({ month: 0, year: 0 })
 
 watch(isPickerOpen, (open) => open && (pickerMonth.value = viewedMonth.value))
 
-const pagePicker = (months: number) => {
-	const paged = dayjs(new Date(pickerMonth.value.year, pickerMonth.value.month)).add(
-		months,
-		'month',
-	)
-	pickerMonth.value = { month: paged.month(), year: paged.year() }
-}
-
-const pickerTitle = computed(() =>
-	dayjs(new Date(pickerMonth.value.year, pickerMonth.value.month)).format('MMMM YYYY'),
-)
-
 const pickDate = (date: string) => {
 	isPickerOpen.value = false
 	emit('selectDate', date)
@@ -250,13 +231,7 @@ const pickDate = (date: string) => {
  * box: it is the page here, not a pane on one.
  */
 const config = computed(() => {
-	const mode = isMonth.value
-		? ('Month' as const)
-		: isWeek.value
-			? ('Week' as const)
-			: isDay.value
-				? ('Day' as const)
-				: ('Agenda' as const)
+	const mode = modeForView(props.view)
 	return {
 		defaultMode: mode,
 		disableModes: (['Agenda', 'Day', 'Week', 'Month'] as const).filter(
@@ -286,17 +261,10 @@ const agenda = useTemplateRef<{
  * its date numbers open the day, and so does a tap on the week's own date heads.
  * Left alone, the Calendar drew a day while everything round it still said month.
  */
-const VIEW_BY_MODE: Record<string, MobileView> = {
-	Day: 'day',
-	Week: 'week',
-	Month: 'month',
-	Agenda: 'agenda',
-}
-
 watch(
 	() => agenda.value?.activeView,
 	(mode) => {
-		const view = mode && VIEW_BY_MODE[mode]
+		const view = mode && viewForMode(mode)
 		if (view && view !== props.view) emit('selectView', view)
 	},
 )

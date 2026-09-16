@@ -27,11 +27,6 @@ interface MetaEvent {
 	}>
 }
 
-/**
- * The second line: whatever the row can say in a few words about where the
- * event is and who else is in it — the location, else the meeting, else how
- * often it repeats. A row without any of that stays one line tall.
- */
 /** Where it is: the location, else the meeting it happens in. */
 export const eventPlace = (event: MetaEvent): string => {
 	const place = event.locations?.find((l) => l._name)?._name
@@ -41,7 +36,7 @@ export const eventPlace = (event: MetaEvent): string => {
 }
 
 /** How often it comes round, as the formatter writes it — "Every week on Thursday". */
-export const eventRepeat = (event: MetaEvent): string => {
+const eventRepeat = (event: MetaEvent): string => {
 	if (!event.recurrence_rule?.frequency) return ''
 	return getRepeatMessage(event.recurrence_rule) || ''
 }
