@@ -35,6 +35,7 @@ import {
 	shiftedMasterStart,
 } from '@/apps/calendar/utils/datetime'
 import { getRepeatMessage } from '@/apps/calendar/utils/format'
+import { VISIBILITY_OPTIONS } from '@/apps/calendar/utils/eventOptions'
 import { reanchoredRule } from '@/apps/calendar/utils/recurrence'
 import { isFirstOccurrence, scopeOptions } from '@/apps/calendar/utils/recurringScope'
 import type { RecurringScope } from '@/apps/calendar/utils/recurringScope'
