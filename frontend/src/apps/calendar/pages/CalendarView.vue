@@ -1008,7 +1008,7 @@ const recurringScopeModalProps = computed(() => ({
 
 const NOTIFY_MODAL_OPTIONS = {
 	title: __('Notify Participants'),
-	icon: { name: 'lucide-bell' },
+	icon: 'lucide-bell',
 	message: __('Send an email to let attendees know this event has been updated?'),
 }
 </script>

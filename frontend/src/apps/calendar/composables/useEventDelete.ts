@@ -156,7 +156,8 @@ export function useEventDelete(
 
 	const deleteScopeModalProps = computed(() => ({
 		title: __('Delete repeating event'),
-		icon: { name: 'lucide-trash-2', theme: 'red' as const },
+		icon: 'lucide-trash-2',
+		iconTheme: 'red' as const,
 		// No line above the list: the title already says what is being deleted.
 		// Every answer is the server's to give here: an instance delete, a rule that ends
 		// earlier, the series itself. Editing has no equivalent of the middle one yet.
@@ -187,7 +188,7 @@ export function useEventDelete(
 
 	const NOTIFY_DELETE_OPTIONS = {
 		title: __('Notify Participants'),
-		icon: { name: 'lucide-bell' },
+		icon: 'lucide-bell',
 		message: __('Send a cancellation email to let attendees know this event was deleted?'),
 	}
 

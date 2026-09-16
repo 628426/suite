@@ -144,10 +144,8 @@ const rsvpScopeModalProps = computed(() => ({
 	title: __('Respond to repeating event'),
 	// The answer about to be sent, drawn as the participant list draws it: the dialog is
 	// about this yes or this no, not about responding in general.
-	icon: {
-		name: participationStatusDisplay(pendingResponse.value).name,
-		theme: participationStatusDisplay(pendingResponse.value).theme,
-	},
+	icon: participationStatusDisplay(pendingResponse.value).name,
+	iconTheme: participationStatusDisplay(pendingResponse.value).theme,
 	// No "this and following": ending a series partway is the organizer's act, and an attendee
 	// answering an invitation is not editing the event at all.
 	//

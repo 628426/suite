@@ -13,8 +13,8 @@
 -->
 <template>
   <Popover bare side="bottom" align="start">
-    <template #trigger="{ toggle, open }">
-      <slot name="trigger" :toggle :open :color="modelValue">
+    <template #trigger="{ setOpen, open }">
+      <slot name="trigger" :toggle="() => setOpen(!open)" :open :color="modelValue">
         <Tooltip :text="title">
           <button type="button" class="sn-cp-trigger" :class="{ open }">
             <span class="sn-cp-trigger-sw" :style="{ background: isHex(modelValue) ? modelValue : 'transparent' }" />

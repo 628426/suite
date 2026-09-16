@@ -909,7 +909,7 @@ const AVAILABILITY_OPTIONS = [
 
 const showNotifyParticipantsOptions = computed(() => ({
 	title: __('Notify Participants'),
-	icon: { name: 'lucide-bell' },
+	icon: 'lucide-bell',
 	message:
 		isNew.value || isDraft.value
 			? __("Send an email to let attendees know they've been invited?")
@@ -918,7 +918,7 @@ const showNotifyParticipantsOptions = computed(() => ({
 
 const DISCARD_MODAL_OPTIONS = computed(() => ({
 	title: __('Discard changes?'),
-	icon: { name: 'lucide-trash-2' },
+	icon: 'lucide-trash-2',
 	message: isNew.value
 		? __('This event has not been saved and will be lost.')
 		: __('Your unsaved edits to this event will be lost.'),

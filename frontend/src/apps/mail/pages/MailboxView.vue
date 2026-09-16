@@ -1598,7 +1598,7 @@ const emptyMailbox = createResource({
 const emptyMailboxOptions = computed(() => ({
 	title: __('Empty {0}', [mailboxName.value]),
 	message: __(`Are you sure you want to empty the contents of this mailbox?`),
-	icon: { name: 'lucide-alert-triangle', theme: 'amber' },
+	icon: 'lucide-alert-triangle', theme: 'amber',
 	actions: [
 		{
 			label: __('Confirm'),

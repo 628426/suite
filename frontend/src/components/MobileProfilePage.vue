@@ -81,7 +81,7 @@
 			v-bind="{
 				title: __('Log Out'),
 				message: __('Are you sure you want to log out?'),
-				icon: { name: 'lucide-alert-triangle', theme: 'amber' },
+				icon: 'lucide-alert-triangle', theme: 'amber',
 				actions: [{ label: __('Log Out'), theme: 'red', onClick: logout.submit }],
 			}"
 		/>
