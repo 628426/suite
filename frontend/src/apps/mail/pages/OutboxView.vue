@@ -139,7 +139,7 @@ import {
 } from '@/apps/mail/utils/submission'
 import { useScreenSize } from '@/apps/mail/utils/composables'
 import { userStore } from '@/apps/mail/stores/user'
-import AdaptiveDropdown from '@/apps/mail/components/AdaptiveDropdown.vue'
+import AdaptiveDropdown from '@/components/AdaptiveDropdown.vue'
 import DashboardListSkeleton from '@/apps/mail/components/DashboardListSkeleton.vue'
 import HeaderActions from '@/apps/mail/components/HeaderActions.vue'
 import MobileTitleHeader from '@/apps/mail/components/mobile/MobileTitleHeader.vue'
@@ -515,7 +515,7 @@ const cancelOptions = computed(() => ({
 	message: selected.value?.email_deleted
 		? __('Cancel the scheduled delivery?')
 		: __('Cancel the scheduled delivery and move the message back to Drafts?'),
-	icon: { name: 'lucide-alert-triangle', theme: 'amber' },
+	icon: 'lucide-alert-triangle', theme: 'amber',
 	actions: [
 		{
 			label: __('Confirm'),

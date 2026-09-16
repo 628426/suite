@@ -42,7 +42,7 @@
 							:key="item.label"
 								:label="item.label"
 								:icon="item.icon"
-								:to="item.to"
+								:route="item.to"
 								:class="
 									threadDrag.overMailbox.value === item.mailboxId &&
 									'ring-2 ring-outline-gray-3 ring-inset'

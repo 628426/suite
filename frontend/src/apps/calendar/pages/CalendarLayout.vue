@@ -2,6 +2,9 @@
 import { onMounted, onUnmounted, provide } from 'vue'
 import { FrappeUIProvider } from 'frappe-ui'
 
+import { useScreenSize } from '@/composables/useScreenSize'
+import CalendarTabBar from '@/apps/calendar/components/mobile/CalendarTabBar.vue'
+
 import { shouldIgnoreKeypress } from '@/apps/calendar/utils'
 import dayjs from '@/apps/calendar/utils/dayjs'
 import { useTheme } from '@/apps/calendar/utils/composables'
@@ -17,6 +20,7 @@ import { initSocket } from '@/apps/calendar/socket'
  *   - ports the Cmd/Ctrl+Shift+L theme-cycle shortcut,
  *   - wraps children in FrappeUIProvider and renders the nested <router-view>.
  */
+const { isMobile } = useScreenSize()
 const { userResource } = userStore()
 const { cycleTheme } = useTheme()
 
@@ -48,7 +52,15 @@ const handleKeyDown = (e: KeyboardEvent) => {
 
 <template>
 	<FrappeUIProvider>
-		<router-view />
+		<!-- The phone's chrome stands outside the routes so it is the same bar on the
+		     calendar and on Profile, and so a route change never remounts it. The height
+		     is owned here for the same reason: the views fill what is left above the bar
+		     rather than each measuring the viewport themselves. -->
+		<div v-if="isMobile" class="flex h-dvh min-h-0 flex-col pt-[env(safe-area-inset-top)]">
+			<div class="min-h-0 flex-1"><router-view /></div>
+			<CalendarTabBar />
+		</div>
+		<router-view v-else />
 	</FrappeUIProvider>
 </template>
 
