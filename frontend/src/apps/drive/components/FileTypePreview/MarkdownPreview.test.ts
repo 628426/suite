@@ -68,8 +68,10 @@ describe('Drive MarkdownPreview', () => {
     request.resolve({
       ok: true,
       json: async () => ({
-        content: '<h1>Hello</h1>',
-        mime_type: 'text/markdown',
+        message: {
+          content: '<h1>Hello</h1>',
+          mime_type: 'text/markdown',
+        },
       }),
     } as Response)
     await flushPromises()
@@ -91,8 +93,10 @@ describe('Drive MarkdownPreview', () => {
     formatted.resolve({
       ok: true,
       json: async () => ({
-        content: '<h1>Hello</h1>',
-        mime_type: 'text/markdown',
+        message: {
+          content: '<h1>Hello</h1>',
+          mime_type: 'text/markdown',
+        },
       }),
     } as Response)
     await flushPromises()
@@ -106,8 +110,10 @@ describe('Drive MarkdownPreview', () => {
     raw.resolve({
       ok: true,
       json: async () => ({
-        content: 'Raw markdown text',
-        mime_type: 'text/markdown',
+        message: {
+          content: 'Raw markdown text',
+          mime_type: 'text/markdown',
+        },
       }),
     } as Response)
     await flushPromises()
@@ -148,8 +154,10 @@ describe('Drive MarkdownPreview', () => {
       Promise.resolve({
         ok: true,
         json: async () => ({
-          content: '',
-          mime_type: 'text/markdown',
+          message: {
+            content: '',
+            mime_type: 'text/markdown',
+          },
         }),
       } as Response),
     )

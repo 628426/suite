@@ -128,9 +128,11 @@ async function fetchContent() {
       return
     }
 
-    const response = (await res.json()) as {
-      content?: string
-      error?: string
+    const { message: response = {} } = (await res.json()) as {
+      message?: {
+        content?: string
+        error?: string
+      }
     }
     if (response.error) {
       error.value = response.error
