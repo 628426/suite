@@ -42,7 +42,7 @@
 							:key="item.label"
 								:label="item.label"
 								:icon="item.icon"
-								:to="item.to"
+								:route="item.to"
 								:class="
 									threadDrag.overMailbox.value === item.mailboxId &&
 									'ring-2 ring-outline-gray-3 ring-inset'
@@ -99,7 +99,7 @@
 		</Sidebar>
 	</Transition>
 
-	<SettingsModal v-if="!isMobile" v-model="showSettings" />
+	<SettingsModal v-if="!isMobile" v-model:open="showSettings" />
 	<!-- Mobile settings pushes in from the right like a thread: its back-chevron
 	     header is push-navigation language (slide-up is reserved for summoned
 	     tasks — compose/search). Teleported to body: inside the layout's isolate
@@ -116,7 +116,6 @@
 	</Teleport>
 	<FolderModal v-model="showFolderModal" :mailbox="selectedMailbox" />
 	<DeleteFolderModal v-model="showDeleteMailbox" :mailbox="selectedMailbox" />
-	<ShortcutsModal v-model="showShortcuts" />
 </template>
 
 <script setup lang="ts">
@@ -139,7 +138,7 @@ import { accountSubmenu } from '@/composables/accountSubmenu'
 import { useAppSwitcher } from '@/composables/useAppSwitcher'
 import { FOLDER_ICON_COLOR_MAP } from '@/apps/mail/constants'
 import { canMoveToMailbox, getIcon, getMailboxName, toTitleCase } from '@/apps/mail/utils'
-import { useAccountSwitch, useScreenSize, useSettings, useSidebar } from '@/apps/mail/utils/composables'
+import { useAccountSwitch, useScreenSize, useSettings, useShortcuts, useSidebar } from '@/apps/mail/utils/composables'
 import { useThreadDrag } from '@/apps/mail/composables/useThreadDrag'
 import { sessionStore } from '@/apps/mail/stores/session'
 import { SECONDARY_MAILBOX_ROLES, userStore } from '@/apps/mail/stores/user'
@@ -147,7 +146,6 @@ import MailLogo from '@/apps/mail/components/Icons/MailLogo.vue'
 import DeleteFolderModal from '@/apps/mail/components/Modals/DeleteFolderModal.vue'
 import FolderModal from '@/apps/mail/components/Modals/FolderModal.vue'
 import SettingsModal from '@/apps/mail/components/Modals/SettingsModal.vue'
-import ShortcutsModal from '@/apps/mail/components/Modals/ShortcutsModal.vue'
 import PWASettings from '@/apps/mail/components/PWASettings.vue'
 import QuotaBar from '@/apps/mail/components/QuotaBar.vue'
 import UpcomingEvents from '@/apps/mail/components/UpcomingEvents.vue'
@@ -249,7 +247,7 @@ const { showSettings } = useSettings()
 const showFolderModal = ref(false)
 const selectedMailbox = ref()
 const showDeleteMailbox = ref(false)
-const showShortcuts = ref(false)
+const { openShortcuts } = useShortcuts()
 
 const title = computed(() =>
 	branding.data?.brand_name && branding.data?.brand_name != 'Frappe'
@@ -320,7 +318,7 @@ const menuItems = computed(() => [
 			{
 				icon: Keyboard,
 				label: __('Shortcuts'),
-				onClick: () => (showShortcuts.value = true),
+				onClick: openShortcuts,
 				condition: () => !isMobile.value,
 			},
 		],
