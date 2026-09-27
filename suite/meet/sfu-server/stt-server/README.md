@@ -59,3 +59,21 @@ docker run --rm --gpus all \
 ```
 
 Pull requests affecting the runtime run lightweight protocol, cancellation, and resampling tests without building or publishing an image. Pushes to `develop` publish `develop` and short-SHA tags after the same tests; manual runs additionally publish the requested tag.
+
+## Caption vocabulary hints
+
+Meet sends a bounded snapshot of participant display names over the authenticated
+SFU-to-STT Realtime session. The STT decoder also biases the explicit Frappe
+product glossary in `context_bias.py`. Hints are applied during Nemotron's
+multilingual RNN-T decoding, never by replacing transcript text. Names refresh
+at the next utterance after a participant joins or leaves; an utterance already
+in progress keeps its initial roster. The shared decoder is configured once,
+and per-utterance name models are released on finalize, clear or close.
+If a room-name phrase model cannot be built, streaming continues with the
+low-weight shared terminology hints rather than dropping speech.
+Name hints use weight 1.5 and shared terminology uses a gentler 0.35 to avoid
+inserting unrelated Frappe terms into ordinary speech. The offline name pilot
+recovered 2/6 difficult names at that weight without the wrong-person
+substitution seen at weight 2. This is not a guarantee against substitutions
+in real speech; monitor false names and first-caption latency before increasing
+the weight or glossary.
