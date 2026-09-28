@@ -25,6 +25,7 @@ interface AudioIngesterOptions {
 	router: Router;
 	sttClient: ISttClient;
 	getNames?: () => string[];
+	onAudioSent?: (seconds: number) => void;
 	onUnexpectedStreamClose: () => void;
 	onTranscript: (text: string, isFinal: boolean, durationMs: number) => void;
 }
@@ -83,6 +84,7 @@ export class AudioIngester {
 	private router: Router;
 	private sttClient: ISttClient;
 	private getNames?: () => string[];
+	private onAudioSent?: (seconds: number) => void;
 	private sttStream: ISttStream | null = null;
 	private sessionId = randomUUID();
 	private onUnexpectedStreamClose: () => void;
@@ -117,8 +119,14 @@ export class AudioIngester {
 		this.router = options.router;
 		this.sttClient = options.sttClient;
 		this.getNames = options.getNames;
+		this.onAudioSent = options.onAudioSent;
 		this.onUnexpectedStreamClose = options.onUnexpectedStreamClose;
 		this.onTranscript = options.onTranscript;
+	}
+
+	/** Whether an ingester currently holds a stream; false between closure and recovery. */
+	hasRealtimeStream(): boolean {
+		return this.sttStream !== null;
 	}
 
 	async start(): Promise<void> {
@@ -435,8 +443,10 @@ export class AudioIngester {
 		// before its first update. Each producer already has its own VAD stream.
 		const stream = this.sttStream;
 		if (!stream) return;
-		stream.sendAudio(frame);
-		this.streamedBytes += frame.length;
+		if (stream.sendAudio(frame)) {
+			this.onAudioSent?.(frame.length / BYTES_PER_SAMPLE / SAMPLE_RATE);
+			this.streamedBytes += frame.length;
+		}
 	}
 
 	private markFinal(): void {
