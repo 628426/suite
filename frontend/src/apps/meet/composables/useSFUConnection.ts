@@ -201,6 +201,8 @@ export function useSFUConnection(deps: {
 	onScreenShareStarted: (data: SFUScreenShareData) => void;
 	onScreenShareStopped: (data: SFUScreenShareData) => void;
 	onActiveSpeakerChanged: (participantIds: string[]) => void;
+	onRoomRejoined?: (sfuClient: SFUClient) => void;
+	onE2EERequired?: () => void;
 	onRecordingState?: (recording: RecordingState | null) => void;
 	onRecordingEnabled?: (enabled: boolean) => void;
 	onCohostPromoted?: () => Promise<void>;
@@ -220,6 +222,8 @@ export function useSFUConnection(deps: {
 		onScreenShareStarted,
 		onScreenShareStopped,
 		onActiveSpeakerChanged,
+		onRoomRejoined,
+		onE2EERequired,
 		onRecordingState,
 		onRecordingEnabled,
 		onCohostPromoted,
@@ -264,6 +268,10 @@ export function useSFUConnection(deps: {
 		mediaState,
 		isCurrentTabHost,
 	});
+	const handleMeetingE2EEEnabled = (data: { meeting_id?: string }) => {
+		if (data.meeting_id === meetingId) onE2EERequired?.();
+		return e2eeHandshake.handleMeetingE2EEEnabled(data);
+	};
 
 	const joinMeetingAPI = useCall<JoinPayload, { meeting_id: string }>({
 		url: "/api/v2/method/suite.meet.api.meeting.join_meeting",
@@ -396,6 +404,7 @@ export function useSFUConnection(deps: {
 						"We couldn't restore your meeting connection. Try joining again.";
 				}
 			},
+			onRoomRejoined: () => onRoomRejoined?.(sfuClient),
 			onParticipantJoined: handleParticipantJoined,
 			onParticipantLeft: handleParticipantLeft,
 			onParticipantUpdated: handleParticipantUpdated,
@@ -754,9 +763,6 @@ export function useSFUConnection(deps: {
 				connectionState.guestId = admittedSession.guestId;
 				connectionState.guestSessionToken = admittedSession.guestSessionToken;
 				connectionState.guestAuthToken = response.auth_token;
-				connectionState.guestSfuUrl = response.sfu_url || null;
-				connectionState.guestSfuPort =
-					response.sfu_port == null ? null : String(response.sfu_port);
 				if (response.host_only_chat !== undefined) {
 					chatStore.hostOnlyChat = response.host_only_chat;
 				}
@@ -945,7 +951,7 @@ export function useSFUConnection(deps: {
 		socket.on("meeting_user_approved", handleMeetingUserApproved);
 		socket.on("meeting_user_rejected", handleMeetingUserRejected);
 		socket.on("meeting:cohost_promoted", handleCohostPromoted);
-		socket.on("meeting:e2ee_enabled", e2eeHandshake.handleMeetingE2EEEnabled);
+		socket.on("meeting:e2ee_enabled", handleMeetingE2EEEnabled);
 
 		// SFU signal channel handlers and document listeners live in the
 		// E2EE handshake composable; see useE2EEConnectionHandshake.
@@ -963,7 +969,7 @@ export function useSFUConnection(deps: {
 		socket.off("meeting_user_approved", handleMeetingUserApproved);
 		socket.off("meeting_user_rejected", handleMeetingUserRejected);
 		socket.off("meeting:cohost_promoted", handleCohostPromoted);
-		socket.off("meeting:e2ee_enabled", e2eeHandshake.handleMeetingE2EEEnabled);
+		socket.off("meeting:e2ee_enabled", handleMeetingE2EEEnabled);
 
 		e2eeHandshake.teardownRealtimeEventListeners();
 		e2eeHandshake.teardownForDisconnect();
@@ -1016,9 +1022,6 @@ export function useSFUConnection(deps: {
 			connectionState.guestSessionToken = joinResult.guest_session_token;
 			connectionState.guestAuthToken =
 				joinResult.auth_token || null;
-			connectionState.guestSfuUrl = joinResult.sfu_url || null;
-			connectionState.guestSfuPort =
-				joinResult.sfu_port == null ? null : String(joinResult.sfu_port);
 
 			if (joinResult.host_only_chat !== undefined) {
 				chatStore.hostOnlyChat = !!joinResult.host_only_chat;
@@ -1066,8 +1069,6 @@ export function useSFUConnection(deps: {
 			connectionState.isInPreview = false;
 
 			connectionState.guestAuthToken = null;
-			connectionState.guestSfuUrl = null;
-			connectionState.guestSfuPort = null;
 
 			const joinResult = normalizeJoinPayload(
 				await joinMeetingAPI.submit({ meeting_id: meetingId }),

@@ -5,7 +5,7 @@ import json
 import os
 import shutil
 from datetime import UTC, datetime, timedelta
-from typing import Literal
+from typing import Any, Literal
 from uuid import uuid7
 from zoneinfo import ZoneInfo
 
@@ -26,6 +26,7 @@ from frappe.utils import (
     random_string,
     time_diff_in_seconds,
 )
+from pydantic import BaseModel, ConfigDict, Field
 
 from suite.mail.doctype.push_subscription.push_subscription import (
     freeze_jmap_push_notifications,
@@ -49,6 +50,16 @@ from suite.utils import log_error, reconnect_on_failure
 from suite.utils.file import compress_directory, extract_compressed_file
 from suite.utils.permissions import OwnerFromUser
 from suite.utils.user import is_administrator
+from suite.utils.validation import parse_json
+
+
+class CalendarImportMetadata(BaseModel):
+    """Where imported events go. A misspelt key is refused rather than ignored."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    calendar_ids: dict[str, bool] | None = Field(None, alias="calendarIds")
+
 
 # JSCalendar (RFC 8984) -> iCalendar (RFC 5545) value maps.
 STATUS_MAP: dict[str, str] = {
@@ -252,10 +263,8 @@ class CalendarExchange(OwnerFromUser, Document):
         self._resolve_import_file()
 
         if self.import_metadata:
-            try:
-                self.import_metadata = json.dumps(json.loads(self.import_metadata), indent=4)
-            except json.JSONDecodeError:
-                frappe.throw(_("Metadata must be valid JSON."))
+            metadata = parse_json(CalendarImportMetadata, self.import_metadata, _("Metadata"))
+            self.import_metadata = metadata.model_dump_json(by_alias=True, exclude_none=True, indent=4)
 
     def _resolve_import_file(self) -> str:
         """Resolves ``import_file`` to an absolute path, refusing anything outside the site's files
@@ -282,10 +291,8 @@ class CalendarExchange(OwnerFromUser, Document):
         """Validate the export parameters."""
 
         if self.export_filter:
-            try:
-                self.export_filter = json.dumps(json.loads(self.export_filter), indent=4)
-            except json.JSONDecodeError:
-                frappe.throw(_("Export filter must be valid JSON."))
+            export_filter = parse_json(dict[str, Any], self.export_filter, _("Filter"))
+            self.export_filter = json.dumps(export_filter, indent=4)
 
         if not self.export_archive_type:
             frappe.throw(_("Archive Type is required."))
@@ -1048,9 +1055,28 @@ def _add_participants(component, participants: dict) -> None:
             if mapped := PARTSTAT_MAP.get(partstat.lower()):
                 attendee.params["PARTSTAT"] = mapped
 
-        attendee.params["RSVP"] = "TRUE" if participant.get("expectReply") else "FALSE"
+        # A group nobody schedules (a mailing list kept for display) is never asked to reply.
+        expects_reply = participant.get("expectReply") and participant.get("scheduleAgent") != "none"
+        attendee.params["RSVP"] = "TRUE" if expects_reply else "FALSE"
+
+        # RFC 5545 3.2.11: the groups the attendee was invited through.
+        if lists := _member_addresses(participants, participant):
+            attendee.params["MEMBER"] = lists
 
         component.add("attendee", attendee, encode=0)
+
+
+def _member_addresses(participants: dict, participant: dict) -> list[str]:
+    """Returns the calendar addresses of the groups a participant is a member of on this event."""
+
+    addresses = []
+    for group_id in participant.get("memberOf") or {}:
+        group = participants.get(group_id) or {}
+        address = group.get("calendarAddress") or (f"mailto:{group['email']}" if group.get("email") else None)
+        if address:
+            addresses.append(address)
+
+    return addresses
 
 
 def _add_alarms(component, alerts: dict) -> None:

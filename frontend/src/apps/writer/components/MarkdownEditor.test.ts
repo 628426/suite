@@ -9,7 +9,7 @@ afterEach(() => {
   vi.unstubAllGlobals()
 })
 
-async function mountEditor(editable = true) {
+async function mountEditor(editable = true, onDirty = (_value: boolean) => {}) {
   vi.stubGlobal('fetch', vi.fn(async () => ({
     ok: true,
     blob: async () => ({ text: async () => '# Original\n\n- [x] Done' }),
@@ -17,7 +17,7 @@ async function mountEditor(editable = true) {
   const root = document.createElement('div')
   document.body.appendChild(root)
   const app = createApp({ render: () => h(MarkdownEditor, {
-    document: { doc: { name: 'readme' } }, editable,
+    document: { doc: { name: 'readme' } }, editable, 'onUpdate:dirty': onDirty,
   }) })
   app.mount(root)
   cleanup.push(() => { app.unmount(); root.remove() })
@@ -48,6 +48,22 @@ describe('Writer Markdown preview and editor', () => {
     await nextTick()
     expect(root.querySelector('textarea')).toBe(editor)
     expect(editor.value).toContain('Changed')
+  })
+
+  it('reports unsaved Markdown changes and clears the warning when reverted', async () => {
+    const onDirty = vi.fn()
+    const root = await mountEditor(true, onDirty)
+    expect(onDirty).not.toHaveBeenCalledWith(true)
+    const editor = root.querySelector('textarea')!
+    const original = editor.value
+    editor.value = '# Changed'
+    editor.dispatchEvent(new Event('input'))
+    await nextTick()
+    expect(onDirty).toHaveBeenLastCalledWith(true)
+    editor.value = original
+    editor.dispatchEvent(new Event('input'))
+    await nextTick()
+    expect(onDirty).toHaveBeenLastCalledWith(false)
   })
 
   it('keeps the existing editor read-only without write permission', async () => {

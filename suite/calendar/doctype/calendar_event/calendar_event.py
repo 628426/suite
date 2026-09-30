@@ -16,9 +16,11 @@ from frappe.push_notification import PushNotification
 from frappe.utils import cint, get_system_timezone
 
 from suite.calendar.doctype.calendar.calendar import validate_calendar_name_format
+from suite.calendar.doctype.calendar_event.fields import EventFields
 from suite.calendar.doctype.calendar_event.invitations import (
     acting_as_organizer,
     custom_event_invites_enabled,
+    mail_attendees,
 )
 from suite.calendar.doctype.calendar_event.mailing_lists import expand_mailing_list_participants
 from suite.mail.doctype.user_account.user_account import get_user_for_jmap_account
@@ -30,6 +32,7 @@ from suite.mail.utils.logger import get_push_logger
 from suite.utils import enqueue_job, parse_filters, user_context
 from suite.utils.dt import utcnow
 from suite.utils.rate_limiter import dynamic_rate_limit
+from suite.utils.validation import JSONList, parse
 
 
 class CalendarEvent(Document):
@@ -151,6 +154,8 @@ class CalendarEvent(Document):
                     "expect_reply": bool(p.expect_reply),
                     "description": p.description,
                     "comment": p.comment,
+                    "schedule_agent": p.schedule_agent,
+                    "member_of": json.loads(p.member_of),
                 }
                 for p in self.participants
             ]
@@ -327,11 +332,8 @@ def parse_calendar_event_name(name: str) -> tuple[str, str]:
 
 
 @frappe.whitelist()
-def bulk_delete(names: str | list[str]) -> None:
+def bulk_delete(names: JSONList[str]) -> None:
     """Deletes calendar events for the given list of names."""
-
-    if isinstance(names, str):
-        names = json.loads(names)
 
     accounts_map = {}
     for name in names:
@@ -372,29 +374,30 @@ def add_calendar_event(
 
     uid = uuid7().hex
     creation_id = str(uuid7())
-    participants = expand_mailing_list_participants(participants)
-    event = {
-        "creation_id": creation_id,
-        "uid": uid,
-        "organizer": organizer,
-        "calendar_ids": calendar_ids,
-        "status": status.lower(),
-        "is_draft": draft,
-        "title": title,
-        "start": start,
-        "duration": duration,
-        "time_zone": time_zone,
-        "recurrence_rule": recurrence_rule,
-        "show_without_time": show_without_time,
-        "privacy": privacy.lower() if privacy else None,
-        "free_busy_status": free_busy_status.lower() if free_busy_status else None,
-        "description": description,
-        "locations": locations,
-        "links": links,
-        "participants": participants,
-        "alerts": alerts,
-        "use_default_alerts": use_default_alerts,
-    }
+    fields = parse(
+        EventFields,
+        {
+            "organizer": organizer,
+            "calendar_ids": calendar_ids,
+            "status": status,
+            "draft": draft,
+            "title": title,
+            "start": start,
+            "duration": duration,
+            "time_zone": time_zone,
+            "recurrence_rule": recurrence_rule,
+            "show_without_time": show_without_time,
+            "privacy": privacy,
+            "free_busy_status": free_busy_status,
+            "description": description,
+            "locations": locations,
+            "links": links,
+            "participants": expand_mailing_list_participants(participants),
+            "alerts": alerts,
+            "use_default_alerts": use_default_alerts,
+        },
+    )
+    event = {"creation_id": creation_id, "uid": uid, **fields.for_service()}
 
     use_custom_invites = (
         send_scheduling_messages
@@ -486,29 +489,30 @@ def update_calendar_event(
 ) -> None:
     """Updates a calendar event for the given account and event ID."""
 
-    participants = expand_mailing_list_participants(participants)
-    event = {
-        "id": id,
-        "uid": uid,
-        "organizer": organizer,
-        "calendar_ids": calendar_ids,
-        "status": status.lower(),
-        "is_draft": draft,
-        "title": title,
-        "start": start,
-        "duration": duration,
-        "time_zone": time_zone,
-        "recurrence_rule": recurrence_rule,
-        "show_without_time": show_without_time,
-        "privacy": privacy.lower() if privacy else None,
-        "free_busy_status": free_busy_status.lower() if free_busy_status else None,
-        "description": description,
-        "locations": locations,
-        "links": links,
-        "participants": participants,
-        "alerts": alerts,
-        "use_default_alerts": use_default_alerts,
-    }
+    fields = parse(
+        EventFields,
+        {
+            "organizer": organizer,
+            "calendar_ids": calendar_ids,
+            "status": status,
+            "draft": draft,
+            "title": title,
+            "start": start,
+            "duration": duration,
+            "time_zone": time_zone,
+            "recurrence_rule": recurrence_rule,
+            "show_without_time": show_without_time,
+            "privacy": privacy,
+            "free_busy_status": free_busy_status,
+            "description": description,
+            "locations": locations,
+            "links": links,
+            "participants": expand_mailing_list_participants(participants),
+            "alerts": alerts,
+            "use_default_alerts": use_default_alerts,
+        },
+    )
+    event = {"id": id, "uid": uid, **fields.for_service()}
 
     use_custom_invites = (
         send_scheduling_messages
@@ -516,9 +520,9 @@ def update_calendar_event(
         and acting_as_organizer(account, organizer)
     )
 
-    previous_emails = None
+    previous_attendees = None
     if use_custom_invites:
-        previous_emails, event["sequence"] = _previous_invite_state(account, id)
+        previous_attendees, event["sequence"] = _previous_invite_state(account, id)
 
     service = get_calendar_event_service(account)
     # Read before the write: moving a series moves the occurrences its overrides are keyed by.
@@ -534,10 +538,10 @@ def update_calendar_event(
         else:
             frappe.throw(_(response["description"]), title=title)
 
-    _reanchor_overrides(service, id, stored, start, recurrence_rule)
+    _reanchor_overrides(service, id, stored, fields.start, fields.recurrence_rule)
 
     if use_custom_invites:
-        _enqueue_event_notification(account, "update", event_id=id, previous_emails=previous_emails)
+        _enqueue_event_notification(account, "update", event_id=id, previous_attendees=previous_attendees)
 
 
 def _reanchor_overrides(service, id: str, stored: dict, start: str | None, rule: dict | None) -> None:
@@ -634,7 +638,9 @@ def update_calendar_event_instance(
             frappe.throw(_(response["description"]), title=title)
 
     if use_custom_invites:
-        _enqueue_event_notification(account, "update", event_id=master_id)
+        # Named, or the mail would be the series' own: its start is where the occurrence used to
+        # be, and the edit that just moved it lives on the occurrence alone.
+        _enqueue_event_notification(account, "update", event_id=master_id, recurrence_id=recurrence_id)
 
 
 @frappe.whitelist()
@@ -750,6 +756,8 @@ def format_calendar_event(account: str, calendar_map: dict, event: dict) -> dict
                 "expect_reply": cint(p.get("expectReply", False)),
                 "description": p.get("description", ""),
                 "comment": p.get("comment", ""),
+                "schedule_agent": p.get("scheduleAgent") or "",
+                "member_of": p.get("memberOf") or {},
             }
         )
 
@@ -807,7 +815,7 @@ def format_calendar_event(account: str, calendar_map: dict, event: dict) -> dict
 def _enqueue_event_notification(account: str, action: str, **kwargs) -> None:
     """Queues custom invitation/update/cancel emails to send after the event is committed.
 
-    Extra kwargs are forwarded to notify_participants (event_id, event, previous_emails,
+    Extra kwargs are forwarded to notify_participants (event_id, event, previous_attendees,
     recurrence_id).
     """
 
@@ -934,22 +942,25 @@ def enqueue_send_event_alert_notification(user: str, alert: dict, ctx: dict | No
         )
 
 
-def _previous_invite_state(account: str, id: str) -> tuple[list[str], int]:
-    """Returns (current participant emails, next SEQUENCE) for an event about to be updated.
+def _previous_invite_state(account: str, id: str) -> tuple[dict[str, dict], int]:
+    """Returns (attendees as stored, next SEQUENCE) for an event about to be updated.
 
-    The next sequence is the stored sequence + 1, so every organizer update strictly increases
-    SEQUENCE. Attendee clients (Outlook especially) ignore a re-sent REQUEST whose SEQUENCE has
-    not advanced, so we bump it ourselves rather than trusting the server to. Fetched in one
-    round-trip since the update path already needs the participant diff.
+    The attendees are the ones the invitation code mails, keyed by email with the To header
+    each was addressed by, so a cancellation to someone the update removes can still be
+    addressed the same way. The next sequence is the stored sequence + 1, so every organizer
+    update strictly increases SEQUENCE. Attendee clients (Outlook especially) ignore a re-sent
+    REQUEST whose SEQUENCE has not advanced, so we bump it ourselves rather than trusting the
+    server to. Fetched in one round-trip since the update path already needs the participant
+    diff.
     """
 
-    events = get_calendar_events(account, [id])
+    events = get_calendar_event_service(account).get([id])
     if not events:
-        return [], 1
+        return {}, 1
 
     event = events[0]
-    emails = [p["email"] for p in event["participants"] if p.get("email")]
-    return emails, cint(event.get("sequence")) + 1
+    organizer = (event.get("organizerCalendarAddress") or "").lower().replace("mailto:", "")
+    return mail_attendees(event, organizer), cint(event.get("sequence")) + 1
 
 
 def _cancellable_snapshots(account: str, service, ids: list[str]) -> list[dict]:
