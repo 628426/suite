@@ -1,4 +1,5 @@
 <script setup>
+import { watch } from 'vue'
 import MarkdownTabs from '@/components/MarkdownTabs.vue'
 import MarkdownPreview from '@/components/MarkdownPreview.vue'
 import { useTextFile } from '@/composables/useTextFile'
@@ -9,6 +10,21 @@ const props = defineProps({
 })
 
 const { source, loading, error } = useTextFile(() => props.document.doc.name)
+const dirty = defineModel('dirty', { default: false })
+let initialSource = ''
+let initialized = false
+watch([source, loading], ([value, isLoading]) => {
+  if (isLoading) {
+    initialized = false
+    dirty.value = false
+    return
+  }
+  if (!initialized) {
+    initialSource = value
+    initialized = true
+  }
+  dirty.value = value !== initialSource
+})
 </script>
 
 <template>

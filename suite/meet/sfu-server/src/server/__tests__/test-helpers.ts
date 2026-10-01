@@ -2,6 +2,7 @@ import type { Server, Socket } from 'socket.io';
 import { vi } from 'vitest';
 import type { SFUConfig } from '../../config';
 import type { MediasoupManager } from '../../mediasoup/MediasoupManager';
+import type { SttManager } from '../../stt/SttManager';
 import { Telemetry } from '../../telemetry/Telemetry';
 import type {
 	ClientToServerEvents,
@@ -211,7 +212,6 @@ function createMockMediasoupManager(): MediasoupManager {
 			});
 			return result;
 		}),
-		assertConsumerAccess: vi.fn(),
 		closeConsumer: vi.fn().mockResolvedValue(undefined),
 		requestConsumerKeyFrame: vi.fn().mockResolvedValue(true),
 		updateConsumerPreferences: vi.fn().mockResolvedValue({ paused: false }),
@@ -271,6 +271,7 @@ export function createManager(
 		bypassRateLimits: false,
 	},
 	mediasoup: MediasoupManager = createMockMediasoupManager(),
+	sttManager?: SttManager,
 ): ManagerHarness {
 	const io = createMockServer();
 	const authManager = createMockAuthManager();
@@ -285,6 +286,7 @@ export function createManager(
 		runtime,
 		undefined,
 		recordingGrantManager,
+		sttManager,
 	);
 	manager.setupSocketHandlers();
 

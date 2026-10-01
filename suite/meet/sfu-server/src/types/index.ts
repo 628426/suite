@@ -25,6 +25,7 @@ import type {
 	ConsumerClosedEvent,
 	ConsumerUpdatePreferencesRequest,
 	CreateWebRtcTransportRequest,
+	E2eeEpochEnvelope,
 	ExistingRaisedHandsEvent,
 	HandRaisedEvent,
 	HostControlRequest,
@@ -38,6 +39,7 @@ import type {
 	ParticipantInfo,
 	ParticipantJoinedEvent,
 	ParticipantLeftEvent,
+	ParticipantUpdatedEvent,
 	PinnedChatMessage,
 	PreviewParticipantInfo,
 	ProducerCloseDetails,
@@ -64,6 +66,9 @@ import type {
 	ScreenShareStoppedEvent,
 	SFUErrorEvent,
 	SFUScope,
+	SttSegmentEvent,
+	SttToggleRequest,
+	TranscriptSegment,
 	UpdateTokenRequest,
 	UserData,
 } from '../../../types';
@@ -74,6 +79,7 @@ export type {
 	ChatMessage,
 	Consumer,
 	DtlsParameters,
+	E2eeEpochEnvelope,
 	HandRaisedEvent,
 	IceCandidate,
 	IceParameters,
@@ -81,7 +87,6 @@ export type {
 	ParticipantInfo,
 	PinnedChatMessage,
 	PreviewParticipantInfo,
-	Producer,
 	ProducerCloseDetails,
 	ProducerCloseReason,
 	ProducerCloseSource,
@@ -99,6 +104,7 @@ export type {
 	ScreenShareStartedEvent,
 	ScreenShareStoppedEvent,
 	SFUScope,
+	TranscriptSegment,
 	UserData,
 	WebRtcTransport,
 	WorkerLogLevel,
@@ -110,6 +116,7 @@ export interface ServerToClientEvents {
 	'recording:challenge': (data: RecordingProofChallenge) => void;
 	'recording:projection': (data: RecorderStageProjectionEvent) => void;
 	participant_joined: (data: ParticipantJoinedEvent) => void;
+	participant_updated: (data: ParticipantUpdatedEvent) => void;
 	participant_left: (data: ParticipantLeftEvent) => void;
 	participant_connection_replaced: (data: {
 		reason: 'takeover' | 'reconnect';
@@ -135,6 +142,7 @@ export interface ServerToClientEvents {
 	hand_raised: (data: HandRaisedEvent) => void;
 	existing_raised_hands: (data: ExistingRaisedHandsEvent) => void;
 	network_quality_update: (data: NetworkQualityUpdateEvent) => void;
+	'stt:segment': (data: SttSegmentEvent) => void;
 	'e2ee:epoch': (data: E2eeEpochEnvelope) => void;
 }
 
@@ -280,6 +288,10 @@ export interface ClientToServerEvents {
 		callback: (response: SFUResponse) => void,
 	) => void;
 	leave_room: (data?: LeaveRoomRequest) => void;
+	'stt:toggle': (
+		data: SttToggleRequest,
+		callback: (response: SFUResponse & { enabled?: boolean }) => void,
+	) => void;
 	'e2ee:epoch': (data: E2eeEpochEnvelope) => void;
 }
 
@@ -448,10 +460,7 @@ export interface Room {
 export interface Peer {
 	id: string;
 	info: PeerInfo;
-	transports: Map<string, WebRtcTransport>;
 	producers: Map<string, Producer>;
-	consumers: Map<string, Consumer>;
-	joined: Date;
 }
 
 export interface PeerInfo extends UserData {
@@ -488,16 +497,6 @@ export interface ConsumerData {
 	peerId: string;
 	transportId: string;
 	consumer: Consumer;
-}
-
-export interface RoomStats {
-	id: string;
-	created: Date;
-	peerCount: number;
-	participantCount: number;
-	peers: string[];
-	producerCount?: number;
-	consumerCount?: number;
 }
 
 // Configuration types
@@ -577,94 +576,6 @@ interface PollPayloadFE {
 	hasVoted?: boolean;
 	createdAt: string;
 }
-export type E2eeEpochEnvelope =
-	| E2eeEpochKeyPackageRequest
-	| E2eeEpochGenesisRequest
-	| E2eeEpochKeyPackage
-	| E2eeEpochCommitRequest
-	| E2eeEpochCommit
-	| E2eeEpochWelcome
-	| E2eeEpochAck
-	| E2eeEpochResyncRequest
-	| E2eeEpochJoinStatus;
-
-type E2eeEpochKeyPackageRequest = {
-	type: 'key-package-request';
-	epochNumber: number;
-	reason: 'enable' | 'join' | 'reconnect';
-};
-
-type E2eeEpochGenesisRequest = {
-	type: 'genesis-request';
-	epochNumber: 1;
-	message: string;
-};
-
-type E2eeEpochKeyPackage = {
-	type: 'key-package';
-	fromParticipantId: string;
-	fromSenderId: number;
-	epochNumber: number;
-	reason?: 'enable' | 'join' | 'reconnect';
-	keyPackage: string;
-};
-
-type E2eeEpochCommitRequest = {
-	type: 'commit-request';
-	epochNumber: number;
-	nextEpochNumber: number;
-	membershipDeltaId: string;
-	membershipDeltaHash: string;
-	rosterHash: string;
-	committerSenderId: number;
-	joiningSenderIds: number[];
-	removedSenderIds?: number[];
-};
-
-type E2eeEpochCommit = {
-	type: 'commit';
-	fromParticipantId: string;
-	fromSenderId: number;
-	previousEpochNumber: number;
-	epochNumber: number;
-	membershipDeltaId: string;
-	membershipDeltaHash: string;
-	rosterHash: string;
-	mlsCommit: string;
-};
-
-type E2eeEpochWelcome = {
-	type: 'welcome';
-	fromParticipantId: string;
-	fromSenderId: number;
-	toParticipantId: string;
-	toSenderId: number;
-	epochNumber: number;
-	mlsWelcome: string;
-};
-
-type E2eeEpochAck = {
-	type: 'ack';
-	fromParticipantId: string;
-	fromSenderId: number;
-	epochNumber: number;
-};
-
-type E2eeEpochResyncRequest = {
-	type: 'resync-request';
-	fromParticipantId: string;
-	fromSenderId: number;
-	knownEpochNumber?: number;
-};
-
-type E2eeEpochJoinStatus = {
-	type: 'join-status';
-	status: 'pending' | 'failed';
-	reason?: 'waiting-for-admitter' | 'waiting-for-host';
-	epochNumber: number;
-	message: string;
-};
-
 // Socket.IO module augmentation
 declare module 'socket.io' {
 	interface Socket {

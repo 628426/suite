@@ -370,7 +370,7 @@ class TestDriveFilesAPI(IntegrationTestCase):
 
     def test_markdown_preview_returns_formatted_html_for_markdown(self):
         with self.set_user(OWNER):
-            markdown = self.upload(b"# Title\\n\\n- item", filename="notes.md")
+            markdown = self.upload(b"# Title\n\n- item", filename="notes.md")
             preview = get_markdown_preview(markdown.name, mode="html")
         self.assertEqual(preview["mime_type"], "text/markdown")
         self.assertIn("<h1>Title</h1>", preview["content"])
@@ -378,9 +378,9 @@ class TestDriveFilesAPI(IntegrationTestCase):
 
     def test_markdown_preview_returns_raw_content_for_raw_mode(self):
         with self.set_user(OWNER):
-            markdown = self.upload(b"# Title\\n\\nraw line", filename="notes.md")
+            markdown = self.upload(b"# Title\n\nraw line", filename="notes.md")
             preview = get_markdown_preview(markdown.name, mode="raw")
-        self.assertEqual(preview["content"], "# Title\\n\\nraw line")
+        self.assertEqual(preview["content"], "# Title\n\nraw line")
 
     def test_markdown_preview_blocks_non_markdown_file_types(self):
         with self.set_user(OWNER):
